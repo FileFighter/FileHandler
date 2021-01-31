@@ -13,10 +13,30 @@ Base of this code base is this [repo](https://github.com/snoyberg/file-server-de
 - [ ] upload does support multiple files
 - [ ] download path is GET /download?id=id,id1,id2&token=token
 - [ ] request to download triggers request to backend
-- [ ] download supports multiple files (zipped as one)
-- [ ] service is either mapped with a usefull prefix /userdata/ or a fake subdomain files.....de/upload...  
+- [ ] download supports multiple files (zipped as one, or as multiple downloads)
+- [ ] service is either mapped with a usefull prefix /userdata/ or /data/
 **(Roadmap feature)**
 - [ ] there is another path /preview/id?token=token
+
+
+### Upload
+- FE sends POST with /upload, files content, path and token (as Header)
+- FH sends POST with path, token and file information to rest
+- rest creates file in DB, response is 200 and ids of files
+- FH saves files in a folder (named by a hash of the file id) with filename == fileid
+- FH sends 200 response
+
+### Download
+- FE sends GET /download?id=id,id1,id2 and token (as Header, maybe the ids also as Header)
+- FH sends GET to rest with token and id
+- rest returns id, filename and meta info (if allowed)
+- FH looks up file (in the right folder)
+- FH returns renamed file
+
+
+
+
+
 
 Text below is from the original code base.
 
