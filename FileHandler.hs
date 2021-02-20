@@ -1,12 +1,13 @@
 #!/usr/bin/env stack
 {- stack
-    --resolver lts-6.11
+    --resolver lts-17.4
     --install-ghc
     runghc
     --package shakespeare
     --package wai-app-static
     --package wai-extra
     --package warp
+    --package req
  -}
 
 -- The code above is used for Haskell Stack's script interpreter
@@ -28,7 +29,7 @@
 import qualified Data.ByteString.Char8          as S8
 import qualified Data.ByteString.Lazy           as L
 import           Data.Functor.Identity
-import           Network.HTTP.Types
+import qualified Network.HTTP.Types             as HttpTypes
 import           Network.Wai
 import           Network.Wai.Application.Static
 import           Network.Wai.Handler.Warp
@@ -37,11 +38,18 @@ import           System.Environment
 import           System.FilePath
 import           Text.Blaze.Html.Renderer.Utf8
 import           Text.Hamlet
+import Control.Monad.IO.Class
+import Data.Aeson
+import Network.HTTP.Req
+import Data.CaseInsensitive
+import Data.Text
+import GHC.Int
+
 
 -- | Entrypoint to our application
 main :: IO ()
 main = do
-    -- For ease of setup, we want to have a "sanity" command line
+       -- For ease of setup, we want to have a "sanity" command line
     -- argument. We'll see how this is used in the Dockerfile
     -- later. Desired behavior:
     --
@@ -54,7 +62,7 @@ main = do
         [] -> do
             putStrLn "Launching DataHandler."
             -- Run our application (defined below) on port 5000
-            run 5000 app
+            run 5002 app
         _ -> error $ "Unknown arguments: " ++ show args
 
 -- | Our main application
@@ -64,7 +72,7 @@ app req send =
     case pathInfo req of
         -- "/": send the HTML homepage contents
         [] -> send $ responseBuilder
-                status200
+                HttpTypes.status200
                 [("Content-Type", "text/html; charset=utf-8")]
                 (renderHtmlBuilder homepage)
 
@@ -82,9 +90,9 @@ app req send =
 
         -- anything else: 404
         _ -> send $ responseLBS
-            status404
+            HttpTypes.status404
             [("Content-Type", "text/plain; charset=utf-8")]
-            "Not found"
+            "Not found :("
 
 -- | Create an HTML page which links to the /browse URL, and allows
 -- for a file upload
@@ -116,12 +124,13 @@ upload req send = do
     -- Parse the request body. We'll ignore parameters and just look
     -- at the files
     (_params, files) <- parseRequestBody lbsBackEnd req
-
+    let headers = requestHeaders req
+   -- debug (_params)
     -- Look for the file parameter called "file"
     case lookup "file" files of
         -- Not found, so return a 400 response
         Nothing -> send $ responseLBS
-            status400
+            HttpTypes.status400
             [("Content-Type", "text/plain; charset=utf-8")]
             "No file parameter found"
         -- Got it!
@@ -131,13 +140,49 @@ upload req send = do
                 name = takeFileName $ S8.unpack $ fileName file
                 -- and grab the content
                 content = fileContent file
+               
             -- Write it out
+            postApi headers file (L.length content)
             L.writeFile name content
 
             -- Send a 303 response to redirect back to the homepage
             send $ responseLBS
-                status303
+                HttpTypes.status303
                 [ ("Content-Type", "text/plain: charset=utf-8")
                 , ("Location", "/")
                 ]
                 "Upload successful!"
+
+
+postApi :: [HttpTypes.Header] -> Network.Wai.Parse.FileInfo c -> GHC.Int.Int64 -> IO()
+postApi allheaders file size= runReq defaultHttpConfig $ do
+  let payload =
+        object
+          [ "name" .= (S8.unpack (fileName (file))),
+            "fileContentType" .= (S8.unpack (fileContentType (file))),
+            "size" .= (size)
+          ]
+
+  -- One function—full power and flexibility, automatic retrying on timeouts
+  -- and such, automatic connection sharing.
+  r <-
+    req
+      POST -- method
+      (https "requestbin.io" /: "1cd7bmm1") -- safe by construction URL
+      (ReqBodyJson payload) -- use built-in options or add your own
+      bsResponse  -- specify how to interpret response
+      (header "X-FF-PATH" (getOneHeader allheaders "X-FF-PATH" ) <> header "Authorization" (getOneHeader allheaders "Authorization"))
+     -- mempty -- query params, headers, explicit port number, etc.
+  liftIO $ print (S8.unpack (responseBody r))
+
+
+
+debug :: ([Param]) -> IO()
+debug what = do
+    putStrLn (S8.unpack (snd (Prelude.head what)))
+
+
+getOneHeader :: ([HttpTypes.Header]) -> [Char] -> S8.ByteString
+getOneHeader headers headerName= 
+    snd (Prelude.head (Prelude.filter (\n -> fst n == (Data.CaseInsensitive.mk(S8.pack (headerName) ):: CI S8.ByteString)) headers))
+
