@@ -142,20 +142,18 @@ upload req send = do
                 content = fileContent file
                
             -- Write it out
-            postApi headers file (L.length content)
+            restResponse <- postApi headers file (L.length content)
             L.writeFile name content
 
             -- Send a 303 response to redirect back to the homepage
             send $ responseLBS
-                HttpTypes.status303
-                [ ("Content-Type", "text/plain: charset=utf-8")
-                , ("Location", "/")
-                ]
-                "Upload successful!"
+                HttpTypes.status200
+                [ ("Content-Type", "text/plain: charset=utf-8")]
+                (encode $ snd restResponse)
 
 
-postApi :: [HttpTypes.Header] -> Network.Wai.Parse.FileInfo c -> GHC.Int.Int64 -> IO()
-postApi allheaders file size= runReq defaultHttpConfig $ do
+postApi :: [HttpTypes.Header] -> Network.Wai.Parse.FileInfo c -> GHC.Int.Int64 -> IO (S8.ByteString , Int)
+postApi allheaders file size= runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
   let payload =
         object
           [ "name" .= (S8.unpack (fileName (file))),
@@ -168,12 +166,12 @@ postApi allheaders file size= runReq defaultHttpConfig $ do
   r <-
     req
       POST -- method
-      (https "requestbin.io" /: "1cd7bmm1") -- safe by construction URL
+      (http "ptsv2.com" /: "t/pip6j-1613925577/post") -- safe by construction URL
       (ReqBodyJson payload) -- use built-in options or add your own
       bsResponse  -- specify how to interpret response
-      (header "X-FF-PATH" (getOneHeader allheaders "X-FF-PATH" ) <> header "Authorization" (getOneHeader allheaders "Authorization"))
+      (header "X-FF-ParentID" (getOneHeader allheaders "X-FF-ParentID" ) <> header "Authorization" (getOneHeader allheaders "Authorization"))
      -- mempty -- query params, headers, explicit port number, etc.
-  liftIO $ print (S8.unpack (responseBody r))
+  return $ (responseBody r, responseStatusCode r)
 
 
 
@@ -186,3 +184,6 @@ getOneHeader :: ([HttpTypes.Header]) -> [Char] -> S8.ByteString
 getOneHeader headers headerName= 
     snd (Prelude.head (Prelude.filter (\n -> fst n == (Data.CaseInsensitive.mk(S8.pack (headerName) ):: CI S8.ByteString)) headers))
 
+
+
+httpConfigDontCheckResponse _ _ _ = Nothing
