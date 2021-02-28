@@ -140,25 +140,31 @@ upload req send = do
                 name = takeFileName $ S8.unpack $ fileName file
                 -- and grab the content
                 content = fileContent file
-               
+
             -- Write it out
-            restResponse <- postApi headers file (L.length content)
-            L.writeFile name content
+            (responseBody, responseStatusCode, responseStatusMessage) <- postApi headers file (L.length content)
+            case responseStatusCode of
+                200 -> do
+                    L.writeFile name content
+                    -- Send a 303 response to redirect back to the homepage
+                    send $ responseLBS
+                        HttpTypes.status200
+                        [ ("Content-Type", "text/plain: charset=utf-8")]
+                        "uploaded"
+                _ ->
+                    send $ responseLBS
+                        (HttpTypes.mkStatus responseStatusCode (responseStatusMessage))
+                        [ ("Content-Type", "text/plain: charset=utf-8")]
+                        (L.fromStrict responseBody)
 
-            -- Send a 303 response to redirect back to the homepage
-            send $ responseLBS
-                HttpTypes.status200
-                [ ("Content-Type", "text/plain: charset=utf-8")]
-                (encode $ snd restResponse)
 
-
-postApi :: [HttpTypes.Header] -> Network.Wai.Parse.FileInfo c -> GHC.Int.Int64 -> IO (S8.ByteString , Int)
+postApi :: [HttpTypes.Header] -> Network.Wai.Parse.FileInfo c -> GHC.Int.Int64 -> IO (S8.ByteString , Int, S8.ByteString)
 postApi allheaders file size= runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
   let payload =
         object
-          [ "name" .= (S8.unpack (fileName (file))),
-            "fileContentType" .= (S8.unpack (fileContentType (file))),
-            "size" .= (size)
+          [ "name" .= S8.unpack (fileName file),
+            "fileContentType" .= S8.unpack (fileContentType file),
+            "size" .= size
           ]
 
   -- One function—full power and flexibility, automatic retrying on timeouts
@@ -166,23 +172,23 @@ postApi allheaders file size= runReq (defaultHttpConfig {httpConfigCheckResponse
   r <-
     req
       POST -- method
-      (http "ptsv2.com" /: "t/pip6j-1613925577/post") -- safe by construction URL
+      (http "ptsv2.com" /: "t/vmlnd-1614506338/post") -- safe by construction URL
       (ReqBodyJson payload) -- use built-in options or add your own
       bsResponse  -- specify how to interpret response
       (header "X-FF-ParentID" (getOneHeader allheaders "X-FF-ParentID" ) <> header "Authorization" (getOneHeader allheaders "Authorization"))
      -- mempty -- query params, headers, explicit port number, etc.
-  return $ (responseBody r, responseStatusCode r)
+  return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
 
 
-debug :: ([Param]) -> IO()
-debug what = do
+debug :: [Param] -> IO()
+debug what =
     putStrLn (S8.unpack (snd (Prelude.head what)))
 
 
-getOneHeader :: ([HttpTypes.Header]) -> [Char] -> S8.ByteString
-getOneHeader headers headerName= 
-    snd (Prelude.head (Prelude.filter (\n -> fst n == (Data.CaseInsensitive.mk(S8.pack (headerName) ):: CI S8.ByteString)) headers))
+getOneHeader :: [HttpTypes.Header] -> String -> S8.ByteString
+getOneHeader headers headerName=
+    snd (Prelude.head (Prelude.filter (\n -> fst n == (Data.CaseInsensitive.mk(S8.pack headerName ):: CI S8.ByteString)) headers))
 
 
 
