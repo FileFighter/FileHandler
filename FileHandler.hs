@@ -48,6 +48,7 @@ import GHC.Generics
 import System.Directory
 
 
+
 -- | Entrypoint to our application
 main :: IO ()
 main = do
@@ -96,7 +97,7 @@ app req send =
         _ -> send $ responseLBS
             HttpTypes.status404
             [("Content-Type", "text/plain; charset=utf-8")]
-            "Not found :("
+            "Endpoint does not exist"
 
 -- | Create an HTML page which links to the /browse URL, and allows
 -- for a file upload
