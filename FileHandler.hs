@@ -90,6 +90,8 @@ app req send =
         -- "/upload": handle a file upload
         ["upload"] -> upload req send
 
+        ["download"] -> download req send
+
         -- anything else: 404
         _ -> send $ responseLBS
             HttpTypes.status404
@@ -168,7 +170,7 @@ postApi :: [HttpTypes.Header] -> Network.Wai.Parse.FileInfo c -> GHC.Int.Int64 -
 postApi allheaders file size= runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
   let payload =
         object
-          [ "name" .= takeFileName $ S8.unpack (fileName file),
+          [ "name" .= S8.unpack (fileName file),
             "fileContentType" .= S8.unpack (fileContentType file),
             "size" .= size
           ]
@@ -182,6 +184,56 @@ postApi allheaders file size= runReq (defaultHttpConfig {httpConfigCheckResponse
       (ReqBodyJson payload) -- use built-in options or add your own
       bsResponse  -- specify how to interpret response
       (header "X-FF-ParentID" (getOneHeader allheaders "X-FF-ParentID" ) <> header "Authorization" (getOneHeader allheaders "Authorization"))
+     -- mempty -- query params, headers, explicit port number, etc.
+  return (responseBody r, responseStatusCode r, responseStatusMessage r)
+
+
+
+download :: Application
+download req send = do
+    let headers = requestHeaders req
+    (responseBody, responseStatusCode, responseStatusMessage) <- getApi headers
+    case responseStatusCode of
+                200 -> do
+                    let d = (eitherDecode $ L.fromStrict responseBody ) :: (Either String [GetResponseFile])
+                    case d of
+                        Left err -> send $ responseLBS
+                                    HttpTypes.status200
+                                    [ ("Content-Type", "text/plain: charset=utf-8")]
+                                    (L.fromStrict $ S8.pack err)
+                        Right files -> 
+                            case files of
+                                [fileObject] -> do
+                                    let fileID = fsid fileObject 
+                                    send $ responseFile
+                                        HttpTypes.status200
+                                        [ ("Content-Type", "text/plain: charset=utf-8")]
+                                        (head fileID :  ("/" ++fileID))
+                                        (Nothing)
+                                [] ->
+                                    send $ responseLBS
+                                        HttpTypes.status200
+                                        [ ("Content-Type", "text/plain: charset=utf-8")]
+                                        "nothing"
+                _ ->
+                    send $ responseLBS
+                        (HttpTypes.mkStatus responseStatusCode (responseStatusMessage))
+                        [ ("Content-Type", "text/plain: charset=utf-8")]
+                        (L.fromStrict responseBody)
+
+
+
+
+
+getApi :: [HttpTypes.Header] -> IO (S8.ByteString , Int, S8.ByteString)
+getApi allheaders= runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
+  r <-
+    req
+      GET -- method
+      (http "ptsv2.com" /: "t/vmlnd-1614506338/post") -- safe by construction URL
+      NoReqBody -- use built-in options or add your own
+      bsResponse  -- specify how to interpret response
+      (header "X-FF-FileIDs" (getOneHeader allheaders "X-FF-FileIDs" ) <> header "Authorization" (getOneHeader allheaders "Authorization"))
      -- mempty -- query params, headers, explicit port number, etc.
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
@@ -208,3 +260,12 @@ data PostResponseFile =
 
 instance FromJSON PostResponseFile
 instance ToJSON PostResponseFile
+
+
+data GetResponseFile =
+  GetResponseFile { fsid :: !String  
+            , name :: !String
+           } deriving (Show,Generic)
+
+instance FromJSON GetResponseFile
+instance ToJSON GetResponseFile
