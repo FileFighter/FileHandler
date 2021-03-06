@@ -19,7 +19,7 @@
 -- then state which packages need to be present to run this code.
 
 -- Enable the OverloadedStrings extension, a commonly used feature.
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, DeriveGeneric #-}
 
 -- We use the QuasiQuotes to embed Hamlet HTML templates inside
 -- our source file.
@@ -42,8 +42,10 @@ import Control.Monad.IO.Class
 import Data.Aeson
 import Network.HTTP.Req
 import Data.CaseInsensitive
-import Data.Text
+import qualified Data.Text as DataText
 import GHC.Int
+import GHC.Generics
+import System.Directory
 
 
 -- | Entrypoint to our application
@@ -135,22 +137,26 @@ upload req send = do
             "No file parameter found"
         -- Got it!
         Just file -> do
-            let
-                -- Determine the name of the file to write out
-                name = takeFileName $ S8.unpack $ fileName file
-                -- and grab the content
-                content = fileContent file
+            let content = fileContent file
 
             -- Write it out
             (responseBody, responseStatusCode, responseStatusMessage) <- postApi headers file (L.length content)
             case responseStatusCode of
                 200 -> do
-                    L.writeFile name content
-                    -- Send a 303 response to redirect back to the homepage
-                    send $ responseLBS
-                        HttpTypes.status200
-                        [ ("Content-Type", "text/plain: charset=utf-8")]
-                        "uploaded"
+                    let d = (eitherDecode $ L.fromStrict responseBody ) :: (Either String PostResponseFile)
+                    case d of
+                        Left err -> send $ responseLBS
+                                    HttpTypes.status200
+                                    [ ("Content-Type", "text/plain: charset=utf-8")]
+                                    (L.fromStrict $ S8.pack err)
+                        Right fileObject -> do 
+                                let id = fileSystemId fileObject
+                                createDirectoryIfMissing True [head id]
+                                L.writeFile (head id :  ("/" ++id)) content
+                                send $ responseLBS
+                                    HttpTypes.status200
+                                    [ ("Content-Type", "text/plain: charset=utf-8")]
+                                    "uploaded"
                 _ ->
                     send $ responseLBS
                         (HttpTypes.mkStatus responseStatusCode (responseStatusMessage))
@@ -162,7 +168,7 @@ postApi :: [HttpTypes.Header] -> Network.Wai.Parse.FileInfo c -> GHC.Int.Int64 -
 postApi allheaders file size= runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
   let payload =
         object
-          [ "name" .= S8.unpack (fileName file),
+          [ "name" .= takeFileName $ S8.unpack (fileName file),
             "fileContentType" .= S8.unpack (fileContentType file),
             "size" .= size
           ]
@@ -188,8 +194,17 @@ debug what =
 
 getOneHeader :: [HttpTypes.Header] -> String -> S8.ByteString
 getOneHeader headers headerName=
-    snd (Prelude.head (Prelude.filter (\n -> fst n == (Data.CaseInsensitive.mk(S8.pack headerName ):: CI S8.ByteString)) headers))
+    snd (head (Prelude.filter (\n -> fst n == (Data.CaseInsensitive.mk(S8.pack headerName ):: CI S8.ByteString)) headers))
 
 
 
 httpConfigDontCheckResponse _ _ _ = Nothing
+
+
+
+data PostResponseFile =
+  PostResponseFile { fileSystemId  :: !String
+           } deriving (Show,Generic)
+
+instance FromJSON PostResponseFile
+instance ToJSON PostResponseFile
