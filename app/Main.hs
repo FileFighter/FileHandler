@@ -1,8 +1,5 @@
 {-# LANGUAGE OverloadedStrings, DeriveGeneric, DuplicateRecordFields #-}
 
--- We use the QuasiQuotes to embed Hamlet HTML templates inside
--- our source file.
-{-# LANGUAGE QuasiQuotes #-}
 
 module Main where
 
@@ -30,6 +27,7 @@ import qualified Data.Text as DataText
 import GHC.Int
 import GHC.Generics
 import System.Directory
+import Control.Monad.State
 
 
 
@@ -46,14 +44,18 @@ main = do
     args <- getArgs
     case args of
         ["sanity"] -> putStrLn "Sanity check passed, ready to roll!"
-        [] -> do
-            putStrLn "Launching DataHandler."
+        [restUrl,"dev"] -> do
+            putStrLn "Launching DataHandler with dev profile"
             -- Run our application (defined below) on port 5000
-            run 5001 $ cors (const policy) app
+            run 5002 $ cors (const devCorsPolicy) (app)
+        [restUrl] -> do
+            putStrLn "Launching DataHandler with prod profile"
+            -- Run our application (defined below) on port 5000
+            run 5002 (app)
         _ -> error $ "Unknown arguments: " ++ show args
 
 -- | Our main application
-app :: Application
+app :: Application 
 app req send =
     -- Route the request based on the path requested
     case pathInfo req of
@@ -69,32 +71,11 @@ app req send =
             [("Content-Type", "text/plain; charset=utf-8")]
             "Endpoint does not exist"
 
--- | Create an HTML page which links to the /browse URL, and allows
--- for a file upload
-homepage :: Html
-homepage = [shamlet|
-$doctype 5
-<html>
-    <head>
-        <title>File server
-    <body>
-        <h1>File server
-        <p>
-            <a href=/browse/>Browse available files
 
-        <form method=POST action=/upload enctype=multipart/form-data>
-            <p>Upload a new file
-            <input type=file name=file>
-            <input type=submit>
-|]
 
--- | Use the standard file server settings to serve files from the
--- current directory
-fileServer :: Application
-fileServer = staticApp (defaultFileServerSettings ".")
 
 -- | Handle file uploads, storing the file in the current directory
-upload :: Application
+upload :: Application 
 upload req send = do
     -- Parse the request body. We'll ignore parameters and just look
     -- at the files
@@ -151,10 +132,10 @@ postApi allheaders file size= runReq (defaultHttpConfig {httpConfigCheckResponse
   r <-
     req
       POST -- method
-      (http "ptsv2.com" /: "t/os3vu-1615111052/post") -- safe by construction URL
+      (http "restUrl" /: "t/os3vu-1615111052/post") -- safe by construction URL
       (ReqBodyJson payload) -- use built-in options or add your own
       bsResponse  -- specify how to interpret response
-      (header "X-FF-ParentID" (getOneHeader allheaders "X-FF-ParentID" ) <> header "Authorization" (getOneHeader allheaders "Authorization"))
+      (header "X-FF-IDS" (getOneHeader allheaders "X-FF-IDS" ) <> header "Authorization" (getOneHeader allheaders "Authorization"))
      -- mempty -- query params, headers, explicit port number, etc.
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
@@ -204,7 +185,7 @@ getApi allheaders= runReq (defaultHttpConfig {httpConfigCheckResponse = httpConf
       (http "ptsv2.com" /: "t/vmlnd-1614506338/post") -- safe by construction URL
       NoReqBody -- use built-in options or add your own
       bsResponse  -- specify how to interpret response
-      (header "X-FF-FileIDs" (getOneHeader allheaders "X-FF-FileIDs" ) <> header "Authorization" (getOneHeader allheaders "Authorization"))
+      (header "X-FF-IDS" (getOneHeader allheaders "X-FF-IDS" ) <> header "Authorization" (getOneHeader allheaders "Authorization"))
      -- mempty -- query params, headers, explicit port number, etc.
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
@@ -243,7 +224,7 @@ instance FromJSON GetResponseFile
 instance ToJSON GetResponseFile
 
 
-policy = Just CorsResourcePolicy {
+devCorsPolicy = Just CorsResourcePolicy {
         corsOrigins = Nothing
         , corsMethods = ["GET","POST"]
         , corsRequestHeaders = ["Authorization", "content-type","X-FF-FileIDs","X-FF-ParentID"]
@@ -253,3 +234,16 @@ policy = Just CorsResourcePolicy {
         , corsRequireOrigin = False 
         , corsIgnoreFailures = False
       }
+
+-- maybe needed for prod?
+prodCorsPolicy = Just CorsResourcePolicy {
+        corsOrigins = Nothing
+        , corsMethods = ["GET","POST"]
+        , corsRequestHeaders = ["Authorization", "content-type","X-FF-FileIDs","X-FF-ParentID"]
+        , corsExposedHeaders = Nothing
+        , corsMaxAge = Just $ 60*60*24 -- one day
+        , corsVaryOrigin = False
+        , corsRequireOrigin = False 
+        , corsIgnoreFailures = False
+      }
+      
