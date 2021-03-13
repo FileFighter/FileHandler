@@ -47,11 +47,11 @@ main = do
         [restUrl,"dev"] -> do
             putStrLn "Launching DataHandler with dev profile"
             -- Run our application (defined below) on port 5000
-            run 5002 $ cors (const devCorsPolicy) (app)
+            run 5000 $ cors (const devCorsPolicy) (app)
         [restUrl] -> do
             putStrLn "Launching DataHandler with prod profile"
             -- Run our application (defined below) on port 5000
-            run 5002 (app)
+            run 5000 (app)
         _ -> error $ "Unknown arguments: " ++ show args
 
 -- | Our main application
@@ -92,9 +92,10 @@ upload req send = do
         -- Got it!
         Just file -> do
             let content = fileContent file
+            restUrl <- getRestUrl
 
             -- Write it out
-            (responseBody, responseStatusCode, responseStatusMessage) <- postApi headers file (L.length content)
+            (responseBody, responseStatusCode, responseStatusMessage) <- postApi headers file (L.length content) restUrl
             case responseStatusCode of
                 200 -> do
                     let d = (eitherDecode $ L.fromStrict responseBody ) :: (Either String PostResponseFile)
@@ -118,8 +119,8 @@ upload req send = do
                         (L.fromStrict responseBody)
 
 
-postApi :: [HttpTypes.Header] -> Network.Wai.Parse.FileInfo c -> GHC.Int.Int64 -> IO (S8.ByteString , Int, S8.ByteString)
-postApi allheaders file size= runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
+postApi :: [HttpTypes.Header] -> Network.Wai.Parse.FileInfo c -> GHC.Int.Int64 -> String -> IO (S8.ByteString , Int, S8.ByteString)
+postApi allheaders file size restUrl= runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
   let payload =
         object
           [ "name" .= S8.unpack (fileName file),
@@ -132,10 +133,10 @@ postApi allheaders file size= runReq (defaultHttpConfig {httpConfigCheckResponse
   r <-
     req
       POST -- method
-      (http "restUrl" /: "t/os3vu-1615111052/post") -- safe by construction URL
+      (http (DataText.pack restUrl) /: "t/os3vu-1615111052/post") -- safe by construction URL
       (ReqBodyJson payload) -- use built-in options or add your own
       bsResponse  -- specify how to interpret response
-      (header "X-FF-IDS" (getOneHeader allheaders "X-FF-IDS" ) <> header "Authorization" (getOneHeader allheaders "Authorization"))
+      (header "X-FF-ID" (getOneHeader allheaders "X-FF-ID" ) <> header "Authorization" (getOneHeader allheaders "Authorization"))
      -- mempty -- query params, headers, explicit port number, etc.
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
@@ -144,7 +145,8 @@ postApi allheaders file size= runReq (defaultHttpConfig {httpConfigCheckResponse
 download :: Application
 download req send = do
     let headers = requestHeaders req
-    (responseBody, responseStatusCode, responseStatusMessage) <- getApi headers
+    restUrl <- getRestUrl
+    (responseBody, responseStatusCode, responseStatusMessage) <- getApi headers restUrl
     case responseStatusCode of
                 200 -> do
                     let d = (eitherDecode $ L.fromStrict responseBody ) :: (Either String [GetResponseFile])
@@ -177,12 +179,12 @@ download req send = do
 
 
 
-getApi :: [HttpTypes.Header] -> IO (S8.ByteString , Int, S8.ByteString)
-getApi allheaders= runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
+getApi :: [HttpTypes.Header] -> String -> IO (S8.ByteString , Int, S8.ByteString)
+getApi allheaders restUrl= runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
   r <-
     req
       GET -- method
-      (http "ptsv2.com" /: "t/vmlnd-1614506338/post") -- safe by construction URL
+      (http (DataText.pack restUrl) /: "t/vmlnd-1614506338/post") -- safe by construction URL
       NoReqBody -- use built-in options or add your own
       bsResponse  -- specify how to interpret response
       (header "X-FF-IDS" (getOneHeader allheaders "X-FF-IDS" ) <> header "Authorization" (getOneHeader allheaders "Authorization"))
@@ -247,3 +249,8 @@ prodCorsPolicy = Just CorsResourcePolicy {
         , corsIgnoreFailures = False
       }
       
+
+getRestUrl :: IO String
+getRestUrl= do
+    args <- getArgs
+    return $ head args
