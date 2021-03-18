@@ -1,4 +1,4 @@
-FROM ubuntu:16.04
+FROM ubuntu:cosmic
 
 # Get dumb-init to avoid Ctrl-C issues. See:
 # http://engineeringblog.yelp.com/2016/01/dumb-init-an-init-for-docker.html
