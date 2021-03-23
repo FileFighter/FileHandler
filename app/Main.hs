@@ -47,11 +47,11 @@ main = do
         [restUrl,"dev"] -> do
             putStrLn "Launching DataHandler with dev profile"
             -- Run our application (defined below) on port 5000
-            run 5000 $ cors (const devCorsPolicy) (app)
-        [restUrl] -> do
+            run 5000 $ cors (const devCorsPolicy) app
+        [restUrl,"prod"] -> do
             putStrLn "Launching DataHandler with prod profile"
             -- Run our application (defined below) on port 5000
-            run 5000 (app)
+            run 5000 app
         _ -> error $ "Unknown arguments: " ++ show args
 
 -- | Our main application
@@ -229,7 +229,7 @@ instance ToJSON GetResponseFile
 devCorsPolicy = Just CorsResourcePolicy {
         corsOrigins = Nothing
         , corsMethods = ["GET","POST"]
-        , corsRequestHeaders = ["Authorization", "content-type","X-FF-FileIDs","X-FF-ParentID"]
+        , corsRequestHeaders = ["Authorization", "content-type","X-FF-IDS","X-FF-ID"]
         , corsExposedHeaders = Nothing
         , corsMaxAge = Just $ 60*60*24 -- one day
         , corsVaryOrigin = False
@@ -241,7 +241,7 @@ devCorsPolicy = Just CorsResourcePolicy {
 prodCorsPolicy = Just CorsResourcePolicy {
         corsOrigins = Nothing
         , corsMethods = ["GET","POST"]
-        , corsRequestHeaders = ["Authorization", "content-type","X-FF-FileIDs","X-FF-ParentID"]
+        , corsRequestHeaders = ["Authorization", "content-type","X-FF-IDS","X-FF-ID"]
         , corsExposedHeaders = Nothing
         , corsMaxAge = Just $ 60*60*24 -- one day
         , corsVaryOrigin = False
@@ -251,6 +251,4 @@ prodCorsPolicy = Just CorsResourcePolicy {
       
 
 getRestUrl :: IO String
-getRestUrl= do
-    args <- getArgs
-    return $ head args
+getRestUrl=head <$> getArgs
