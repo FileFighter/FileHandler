@@ -28,7 +28,7 @@ import GHC.Int
 import GHC.Generics
 import System.Directory
 import Control.Monad.State
-
+import System.IO
 
 
 -- | Entrypoint to our application
@@ -68,8 +68,8 @@ app req send =
         -- anything else: 404
         _ -> send $ responseLBS
             HttpTypes.status404
-            [("Content-Type", "text/plain; charset=utf-8")]
-            "Endpoint does not exist"
+            [("Content-Type", "application/json; charset=utf-8")]
+            (encode $ RestApiStatus "This endpoint does not exist." "Not Found")
 
 
 
@@ -87,8 +87,8 @@ upload req send = do
         -- Not found, so return a 400 response
         Nothing -> send $ responseLBS
             HttpTypes.status400
-            [("Content-Type", "text/plain; charset=utf-8")]
-            "No file parameter found"
+            [("Content-Type", "application/json; charset=utf-8")]
+            (encode $ RestApiStatus "No file parameter found" "Bad Request")
         -- Got it!
         Just file -> do
             let content = fileContent file
@@ -101,21 +101,21 @@ upload req send = do
                     let d = (eitherDecode $ L.fromStrict responseBody ) :: (Either String PostResponseFile)
                     case d of
                         Left err -> send $ responseLBS
-                                    HttpTypes.status200
-                                    [ ("Content-Type", "text/plain: charset=utf-8")]
-                                    (L.fromStrict $ S8.pack err)
+                                    HttpTypes.status500
+                                    [ ("Content-Type", "application/json; charset=utf-8")]
+                                    (encode $ RestApiStatus err "Internal Server Error")
                         Right fileObject -> do 
                                 let id = fileSystemId (fileObject ::PostResponseFile)
                                 createDirectoryIfMissing True [head id]
                                 L.writeFile (head id :  ("/" ++id)) content
                                 send $ responseLBS
                                     HttpTypes.status200
-                                    [ ("Content-Type", "text/plain: charset=utf-8")]
-                                    "uploaded"
+                                    [ ("Content-Type", "application/json; charset=utf-8")]
+                                    (encode $ RestApiStatus "Uploaded" "Success")
                 _ ->
                     send $ responseLBS
                         (HttpTypes.mkStatus responseStatusCode responseStatusMessage)
-                        [ ("Content-Type", "text/plain: charset=utf-8")]
+                        [ ("Content-Type", "application/json; charset=utf-8")]
                         (L.fromStrict responseBody)
 
 
@@ -152,27 +152,29 @@ download req send = do
                     let d = (eitherDecode $ L.fromStrict responseBody ) :: (Either String [GetResponseFile])
                     case d of
                         Left err -> send $ responseLBS
-                                    HttpTypes.status200
-                                    [ ("Content-Type", "text/plain: charset=utf-8")]
+                                    HttpTypes.status501
+                                    [ ("Content-Type", "application/json; charset=utf-8")]
                                     (L.fromStrict $ S8.pack err)
                         Right files -> 
                             case files of
                                 [fileObject] -> do
-                                    let fileID = fileSystemId (fileObject::GetResponseFile) 
+                                    let fileID = fileSystemId (fileObject::GetResponseFile)
+                                    let path = head fileID :  ("/" ++fileID)
+                                    filesize <- withFile path ReadMode hFileSize
                                     send $ responseFile
                                         HttpTypes.status200
-                                        [ ("Content-Type", "text/plain: charset=utf-8")]
-                                        (head fileID :  ("/" ++fileID))
+                                        [("X-FF-SIZE", S8.pack $ show filesize)] -- TODO: use the correct mimetype
+                                        path
                                         Nothing
                                 [] ->
                                     send $ responseLBS
-                                        HttpTypes.status200
-                                        [ ("Content-Type", "text/plain: charset=utf-8")]
-                                        "nothing"
+                                        HttpTypes.status501
+                                        [ ("Content-Type", "application/json; charset=utf-8")]
+                                        (encode $ RestApiStatus "Uploaded" "Not Implemented")
                 _ ->
                     send $ responseLBS
                         (HttpTypes.mkStatus responseStatusCode responseStatusMessage)
-                        [ ("Content-Type", "text/plain: charset=utf-8")]
+                        [ ("Content-Type", "application/json; charset=utf-8")]
                         (L.fromStrict responseBody)
 
 
@@ -204,6 +206,8 @@ getOneHeader headers headerName=
 
 
 
+
+
 httpConfigDontCheckResponse :: p1 -> p2 -> p3 -> Maybe a
 httpConfigDontCheckResponse _ _ _ = Nothing
 
@@ -222,9 +226,20 @@ data GetResponseFile =
             , name :: !String
            } deriving (Show,Generic)
 
+
+
+
 instance FromJSON GetResponseFile
 instance ToJSON GetResponseFile
 
+data RestApiStatus = 
+    RestApiStatus {
+        message :: !String
+        , status :: !String
+    } deriving (Show,Generic)
+
+instance FromJSON RestApiStatus
+instance ToJSON RestApiStatus
 
 devCorsPolicy = Just CorsResourcePolicy {
         corsOrigins = Nothing
