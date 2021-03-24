@@ -125,7 +125,8 @@ postApi allheaders file size restUrl= runReq (defaultHttpConfig {httpConfigCheck
         object
           [ "name" .= S8.unpack (fileName file),
             "fileContentType" .= S8.unpack (fileContentType file),
-            "size" .= size
+            "size" .= size,
+            "relativePath" .= ("TODO" :: String)
           ]
 
   -- One function—full power and flexibility, automatic retrying on timeouts
@@ -133,7 +134,7 @@ postApi allheaders file size restUrl= runReq (defaultHttpConfig {httpConfigCheck
   r <-
     req
       POST -- method
-      (http (DataText.pack restUrl) /: "t/os3vu-1615111052/post") -- safe by construction URL
+      (http (DataText.pack restUrl) /: "t/os3vu-1615111052/post") -- TODO: parentID in url
       (ReqBodyJson payload) -- use built-in options or add your own
       bsResponse  -- specify how to interpret response
       (header "X-FF-ID" (getOneHeader allheaders "X-FF-ID" ) <> header "Authorization" (getOneHeader allheaders "Authorization"))
@@ -163,7 +164,7 @@ download req send = do
                                     filesize <- withFile path ReadMode hFileSize
                                     send $ responseFile
                                         HttpTypes.status200
-                                        [("X-FF-SIZE", S8.pack $ show filesize)] -- TODO: use the correct mimetype
+                                        [("Content-Disposition","attachment; filename=\"example-file.mp4\"")] -- TODO: use the correct mimetype 
                                         path
                                         Nothing
                                 [] ->
@@ -202,7 +203,9 @@ debug what =
 
 getOneHeader :: [HttpTypes.Header] -> String -> S8.ByteString
 getOneHeader headers headerName=
-    snd (head (Prelude.filter (\n -> fst n == (Data.CaseInsensitive.mk(S8.pack headerName ):: CI S8.ByteString)) headers))
+    case Prelude.filter (\n -> fst n == (Data.CaseInsensitive.mk(S8.pack headerName ):: CI S8.ByteString)) headers of 
+        [header] -> snd header
+        _ -> ""
 
 
 
@@ -245,7 +248,7 @@ devCorsPolicy = Just CorsResourcePolicy {
         corsOrigins = Nothing
         , corsMethods = ["GET","POST"]
         , corsRequestHeaders = ["Authorization", "content-type","X-FF-IDS","X-FF-ID"]
-        , corsExposedHeaders = Nothing
+        , corsExposedHeaders =  Just ["Content-Disposition"]
         , corsMaxAge = Just $ 60*60*24 -- one day
         , corsVaryOrigin = False
         , corsRequireOrigin = False 
