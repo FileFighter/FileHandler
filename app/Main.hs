@@ -98,20 +98,20 @@ upload req send = do
             (responseBody, responseStatusCode, responseStatusMessage) <- postApi headers file (L.length content) restUrl
             case responseStatusCode of
                 200 -> do
-                    let d = (eitherDecode $ L.fromStrict responseBody ) :: (Either String PostResponseFile)
+                    let d = (eitherDecode $ L.fromStrict responseBody ) :: (Either String RestResponseFile)
                     case d of
                         Left err -> send $ responseLBS
                                     HttpTypes.status500
                                     [ ("Content-Type", "application/json; charset=utf-8")]
                                     (encode $ RestApiStatus err "Internal Server Error")
                         Right fileObject -> do 
-                                let id = fileSystemId (fileObject ::PostResponseFile)
+                                let id = fileSystemId (fileObject ::RestResponseFile)
                                 createDirectoryIfMissing True [head id]
                                 L.writeFile (head id :  ("/" ++id)) content
                                 send $ responseLBS
                                     HttpTypes.status200
                                     [ ("Content-Type", "application/json; charset=utf-8")]
-                                    (encode $ RestApiStatus "Uploaded" "Success")
+                                     (L.fromStrict responseBody)
                 _ ->
                     send $ responseLBS
                         (HttpTypes.mkStatus responseStatusCode responseStatusMessage)
@@ -136,6 +136,7 @@ postApi allheaders file size restUrl= runReq (defaultHttpConfig {httpConfigCheck
     req
       POST -- method
       (http (DataText.pack restUrl) /: "t/os3vu-1615111052/post") -- TODO: parentID in url
+      --(http (DataText.pack restUrl) /: (DataText.pack  ("api/v1/filesystem/" ++ (S8.unpack $ getOneHeader allheaders "X-FF-ID" ) ++ "/upload"))) -- TODO: parentID in url
       (ReqBodyJson payload) -- use built-in options or add your own
       bsResponse  -- specify how to interpret response
       (header "X-FF-ID" (getOneHeader allheaders "X-FF-ID" ) <> header "Authorization" (getOneHeader allheaders "Authorization"))
@@ -151,7 +152,7 @@ download req send = do
     (responseBody, responseStatusCode, responseStatusMessage) <- getApi headers restUrl
     case responseStatusCode of
                 200 -> do
-                    let d = (eitherDecode $ L.fromStrict responseBody ) :: (Either String [GetResponseFile])
+                    let d = (eitherDecode $ L.fromStrict responseBody ) :: (Either String [RestResponseFile])
                     case d of
                         Left err -> send $ responseLBS
                                     HttpTypes.status501
@@ -160,7 +161,7 @@ download req send = do
                         Right files -> 
                             case files of
                                 [fileObject] -> do
-                                    let fileID = fileSystemId (fileObject::GetResponseFile)
+                                    let fileID = fileSystemId (fileObject::RestResponseFile)
                                     let path = head fileID :  ("/" ++fileID)
                                     filesize <- withFile path ReadMode hFileSize
                                     send $ responseFile
@@ -209,32 +210,34 @@ getOneHeader headers headerName=
         _ -> ""
 
 
-
-
-
 httpConfigDontCheckResponse :: p1 -> p2 -> p3 -> Maybe a
 httpConfigDontCheckResponse _ _ _ = Nothing
 
 
-
-data PostResponseFile =
-  PostResponseFile { fileSystemId  :: !String
-           } deriving (Show,Generic)
-
-instance FromJSON PostResponseFile
-instance ToJSON PostResponseFile
-
-
-data GetResponseFile =
-  GetResponseFile { fileSystemId :: !String  
+data RestResponseFile =
+  GetResponseFile { 
+            fileSystemId :: !String  
             , name :: !String
+            , path :: !String
+            , size :: Int 
+            , createdByUser :: User
+            , lastUpdated :: Int 
+            , mimetype :: String
+            , shared :: Bool 
            } deriving (Show,Generic)
 
+instance FromJSON RestResponseFile
+instance ToJSON RestResponseFile
+data User = 
+    User {
+        userId :: Int 
+        , username :: String
+        , groups :: [String]
+    } deriving (Show,Generic)
 
+instance FromJSON User
+instance ToJSON User
 
-
-instance FromJSON GetResponseFile
-instance ToJSON GetResponseFile
 
 data RestApiStatus = 
     RestApiStatus {
