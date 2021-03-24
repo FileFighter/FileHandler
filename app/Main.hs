@@ -124,10 +124,11 @@ postApi allheaders file size restUrl= runReq (defaultHttpConfig {httpConfigCheck
   let payload =
         object
           [ "name" .= S8.unpack (fileName file),
-            "fileContentType" .= S8.unpack (fileContentType file),
+            "mimetype" .= S8.unpack (fileContentType file),
             "size" .= size,
             "relativePath" .= ("TODO" :: String)
           ]
+
 
   -- One function—full power and flexibility, automatic retrying on timeouts
   -- and such, automatic connection sharing.
