@@ -17,8 +17,6 @@ import           Network.Wai.Handler.Warp
 import           Network.Wai.Parse
 import           System.Environment
 import           System.FilePath
-import           Text.Blaze.Html.Renderer.Utf8
-import           Text.Hamlet
 import Control.Monad.IO.Class
 import Data.Aeson
 import Network.HTTP.Req
@@ -29,6 +27,7 @@ import GHC.Generics
 import System.Directory
 import Control.Monad.State
 import System.IO
+import Control.Monad.Trans.Resource
 
 
 -- | Entrypoint to our application
@@ -46,7 +45,7 @@ main = do
         ["sanity"] -> putStrLn "Sanity check passed, ready to roll!"
         [restUrl,"dev"] -> do
             putStrLn "Launching DataHandler with dev profile"
-            -- Run our application (defined below) on port 5000
+            -- Run our application (defined below) on port 5000 with cors enabled
             run 5000 $ cors (const devCorsPolicy) app
         [restUrl,"prod"] -> do
             putStrLn "Launching DataHandler with prod profile"
@@ -61,7 +60,7 @@ app req send =
     case pathInfo req of
        
         -- "/upload": handle a file upload
-        ["upload"] -> upload req send
+        ["upload",id] -> upload req send
 
         ["download"] -> download req send
 
@@ -76,10 +75,9 @@ app req send =
 
 -- | Handle file uploads, storing the file in the current directory
 upload :: Application 
-upload req send = do
-    -- Parse the request body. We'll ignore parameters and just look
-    -- at the files
-    (_params, files) <- parseRequestBody lbsBackEnd req
+upload req send =do
+    tempFileState <- createInternalState
+    (_params, files) <- parseRequestBody (tempFileBackEnd tempFileState)  req
     let headers = requestHeaders req
    -- debug (_params)
     -- Look for the file parameter called "file"
@@ -93,34 +91,40 @@ upload req send = do
         Just file -> do
             let content = fileContent file
             restUrl <- getRestUrl
+            filesize <- withFile content ReadMode hFileSize
 
             -- Write it out
-            (responseBody, responseStatusCode, responseStatusMessage) <- postApi headers file (L.length content) restUrl
+            (responseBody, responseStatusCode, responseStatusMessage) <- postApi headers file filesize restUrl (DataText.unpack $ pathInfo  req!!1)
             case responseStatusCode of
                 200 -> do
                     let d = (eitherDecode $ L.fromStrict responseBody ) :: (Either String RestResponseFile)
                     case d of
-                        Left err -> send $ responseLBS
-                                    HttpTypes.status500
-                                    [ ("Content-Type", "application/json; charset=utf-8")]
-                                    (encode $ RestApiStatus err "Internal Server Error")
+                        Left err -> do
+                                    closeInternalState tempFileState
+                                    send $ responseLBS
+                                      HttpTypes.status500
+                                      [ ("Content-Type", "application/json; charset=utf-8")]
+                                      (encode $ RestApiStatus err "Internal Server Error")
                         Right fileObject -> do 
                                 let id = fileSystemId (fileObject ::RestResponseFile)
                                 createDirectoryIfMissing True [head id]
-                                L.writeFile (head id :  ("/" ++id)) content
+                                renameFile content (head id :  ("/" ++id))
+                                putStrLn ("Uploaded " ++ (head id :  ("/" ++id)))
+                                closeInternalState tempFileState
                                 send $ responseLBS
                                     HttpTypes.status200
                                     [ ("Content-Type", "application/json; charset=utf-8")]
                                      (L.fromStrict responseBody)
-                _ ->
+                _ -> do 
+                    closeInternalState tempFileState
                     send $ responseLBS
                         (HttpTypes.mkStatus responseStatusCode responseStatusMessage)
                         [ ("Content-Type", "application/json; charset=utf-8")]
                         (L.fromStrict responseBody)
 
 
-postApi :: [HttpTypes.Header] -> Network.Wai.Parse.FileInfo c -> GHC.Int.Int64 -> String -> IO (S8.ByteString , Int, S8.ByteString)
-postApi allheaders file size restUrl= runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
+postApi :: [HttpTypes.Header] -> Network.Wai.Parse.FileInfo c -> Integer -> String -> String -> IO (S8.ByteString , Int, S8.ByteString)
+postApi allheaders file size restUrl fileId= runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
   let payload =
         object
           [ "name" .= S8.unpack (fileName file),
@@ -136,10 +140,10 @@ postApi allheaders file size restUrl= runReq (defaultHttpConfig {httpConfigCheck
     req
       POST -- method
       (http (DataText.pack restUrl) /: "t/os3vu-1615111052/post") -- TODO: parentID in url
-      --(http (DataText.pack restUrl) /: (DataText.pack  ("api/v1/filesystem/" ++ (S8.unpack $ getOneHeader allheaders "X-FF-ID" ) ++ "/upload"))) -- TODO: parentID in url
+      --(http (DataText.pack restUrl) /: DataText.pack  ("api/v1/filesystem/" ++ fileId ++ "/upload")) -- TODO: parentID in url
       (ReqBodyJson payload) -- use built-in options or add your own
       bsResponse  -- specify how to interpret response
-      (header "X-FF-ID" (getOneHeader allheaders "X-FF-ID" ) <> header "Authorization" (getOneHeader allheaders "Authorization"))
+      (header "X-FF-ID"  (S8.pack fileId) <> header "Authorization" (getOneHeader allheaders "Authorization")) -- parentID not in Headers
      -- mempty -- query params, headers, explicit port number, etc.
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
@@ -198,9 +202,9 @@ getApi allheaders restUrl= runReq (defaultHttpConfig {httpConfigCheckResponse = 
 
 
 
-debug :: [Param] -> IO()
-debug what =
-    putStrLn (S8.unpack (snd (Prelude.head what)))
+--debug :: [Param] -> IO()
+ --debug what =
+   -- putStrLn (S8.unpack (snd (Prelude.head what)))
 
 
 getOneHeader :: [HttpTypes.Header] -> String -> S8.ByteString
