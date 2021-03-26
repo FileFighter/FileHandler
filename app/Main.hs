@@ -44,11 +44,11 @@ main = do
     case args of
         ["sanity"] -> putStrLn "Sanity check passed, ready to roll!"
         [restUrl,"dev"] -> do
-            putStrLn "Launching DataHandler with dev profile"
+            logStdOut "Launching DataHandler with dev profile"
             -- Run our application (defined below) on port 5000 with cors enabled
             run 5000 $ cors (const devCorsPolicy) app
         [restUrl,"prod"] -> do
-            putStrLn "Launching DataHandler with prod profile"
+            logStdOut "Launching DataHandler with prod profile"
             -- Run our application (defined below) on port 5000
             run 5000 app
         _ -> error $ "Unknown arguments: " ++ show args
@@ -109,7 +109,7 @@ upload req send =do
                                 let id = fileSystemId (fileObject ::RestResponseFile)
                                 createDirectoryIfMissing True [head id]
                                 renameFile content (head id :  ("/" ++id))
-                                putStrLn ("Uploaded " ++ (head id :  ("/" ++id)))
+                                logStdOut ("Uploaded " ++ (head id :  ("/" ++id)))
                                 closeInternalState tempFileState
                                 send $ responseLBS
                                     HttpTypes.status200
@@ -212,6 +212,12 @@ getOneHeader headers headerName=
     case Prelude.filter (\n -> fst n == (Data.CaseInsensitive.mk(S8.pack headerName ):: CI S8.ByteString)) headers of 
         [header] -> snd header
         _ -> ""
+
+-- needed because buffering is causing problems with docker
+logStdOut :: String -> IO ()
+logStdOut text = do
+        putStrLn text
+        hFlush stdout 
 
 
 httpConfigDontCheckResponse :: p1 -> p2 -> p3 -> Maybe a
