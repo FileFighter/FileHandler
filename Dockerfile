@@ -1,7 +1,7 @@
 FROM ubuntu:latest
 
 ARG BINLOCATION
-ENV RESTURL=ptsv2.com
+ENV RESTURL=FileFighterREST:8080
 
 RUN apt update && apt upgrade -y
 
@@ -15,6 +15,7 @@ USER appuser
 
 # We're all ready, now just configure our image to run the server on
 # launch from the correct working directory.
+# using exec solves ctl + c issues
 CMD exec /usr/local/bin/filehandler-exe ${RESTURL} "prod"
 WORKDIR /workdir
 EXPOSE 5000

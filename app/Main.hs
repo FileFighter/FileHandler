@@ -60,9 +60,9 @@ app req send =
     case pathInfo req of
        
         -- "/upload": handle a file upload
-        ["upload",id] -> upload req send
+        ["data","upload",id] -> upload req send
 
-        ["download"] -> download req send
+        ["data","download"] -> download req send
 
         -- anything else: 404
         _ -> send $ responseLBS
