@@ -1,9 +1,9 @@
 FROM ubuntu:latest
 
 ARG BINLOCATION
-ENV RESTURL=FileFighterREST:8080
+ENV RESTURL=FileFighterREST
 
-RUN apt update && apt upgrade -y
+RUN apt-get update && apt-get upgrade -y
 
 # Copy over the source code and make it executable.
 ADD $BINLOCATION/bin/Filehandler-exe /usr/local/bin/filehandler-exe

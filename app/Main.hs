@@ -65,10 +65,10 @@ app req send =
         ["data","download"] -> download req send
 
         -- anything else: 404
-        _ -> send $ responseLBS
+        missingEndpoint -> send $ responseLBS
             HttpTypes.status404
             [("Content-Type", "application/json; charset=utf-8")]
-            (encode $ RestApiStatus "This endpoint does not exist." "Not Found")
+            (encode $ RestApiStatus ("FileHandler: This endpoint does not exist." ++ show missingEndpoint) "Not Found")
 
 
 
@@ -143,7 +143,7 @@ postApi allheaders file size restUrl fileId= runReq (defaultHttpConfig {httpConf
       --(http (DataText.pack restUrl) /: DataText.pack  ("api/v1/filesystem/" ++ fileId ++ "/upload")) -- TODO: parentID in url
       (ReqBodyJson payload) -- use built-in options or add your own
       bsResponse  -- specify how to interpret response
-      (header "X-FF-ID"  (S8.pack fileId) <> header "Authorization" (getOneHeader allheaders "Authorization")) -- parentID not in Headers
+      (header "X-FF-ID"  (S8.pack fileId) <> header "Authorization" (getOneHeader allheaders "Authorization") <> port 8080) -- parentID not in Headers
      -- mempty -- query params, headers, explicit port number, etc.
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
