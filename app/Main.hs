@@ -139,12 +139,13 @@ postApi allheaders file size restUrl fileId= runReq (defaultHttpConfig {httpConf
   r <-
     req
       POST -- method
-      (http (DataText.pack restUrl) /: "t/os3vu-1615111052/post") -- TODO: parentID in url
-      --(http (DataText.pack restUrl) /: DataText.pack  ("api/v1/filesystem/" ++ fileId ++ "/upload")) -- TODO: parentID in url
+      --(http (DataText.pack restUrl) /: "t/os3vu-1615111052/post") -- TODO: parentID in url
+      (http (DataText.pack restUrl) /: "v1" /:"filesystem"/: "43564654" /: "upload") -- TODO: parentID in url
       (ReqBodyJson payload) -- use built-in options or add your own
       bsResponse  -- specify how to interpret response
-      (header "X-FF-ID"  (S8.pack fileId) <> header "Authorization" (getOneHeader allheaders "Authorization") <> port 8080) -- parentID not in Headers
+      (header "Authorization" (getOneHeader allheaders "Authorization") <> port 8080) -- parentID not in Headers
      -- mempty -- query params, headers, explicit port number, etc.
+  liftIO $ logStdOut $ show $responseBody r
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
 
@@ -193,11 +194,13 @@ getApi allheaders restUrl= runReq (defaultHttpConfig {httpConfigCheckResponse = 
   r <-
     req
       GET -- method
-      (http (DataText.pack restUrl) /: "t/vmlnd-1614506338/post") -- safe by construction URL
+    --  (http (DataText.pack restUrl) /: "t/vmlnd-1614506338/post") -- safe by construction URL
+      (http (DataText.pack restUrl) /: "health" /: "fgsdhjfgh") -- safe by construction URL
       NoReqBody -- use built-in options or add your own
       bsResponse  -- specify how to interpret response
-      (header "X-FF-IDS" (getOneHeader allheaders "X-FF-IDS" ) <> header "Authorization" (getOneHeader allheaders "Authorization"))
+      (header "X-FF-IDS" (getOneHeader allheaders "X-FF-IDS" ) <> header "Authorization" (getOneHeader allheaders "Authorization") <> port 80)
      -- mempty -- query params, headers, explicit port number, etc.
+  liftIO $ logStdOut $ show $responseBody r
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
 
