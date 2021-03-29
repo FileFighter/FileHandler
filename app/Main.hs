@@ -94,7 +94,7 @@ upload req send =do
             filesize <- withFile content ReadMode hFileSize
 
             -- Write it out
-            (responseBody, responseStatusCode, responseStatusMessage) <- postApi headers file filesize restUrl (DataText.unpack $ pathInfo  req!!1)
+            (responseBody, responseStatusCode, responseStatusMessage) <- postApi headers file filesize restUrl (DataText.unpack $ pathInfo  req!!2)
             case responseStatusCode of
                 200 -> do
                     let d = (eitherDecode $ L.fromStrict responseBody ) :: (Either String RestResponseFile)
@@ -128,9 +128,9 @@ postApi allheaders file size restUrl fileId= runReq (defaultHttpConfig {httpConf
   let payload =
         object
           [ "name" .= S8.unpack (fileName file),
+            "path" .= S8.unpack (fileName file),
             "mimetype" .= S8.unpack (fileContentType file),
-            "size" .= size,
-            "relativePath" .= ("TODO" :: String)
+            "size" .= size 
           ]
 
 
@@ -140,7 +140,7 @@ postApi allheaders file size restUrl fileId= runReq (defaultHttpConfig {httpConf
     req
       POST -- method
       --(http (DataText.pack restUrl) /: "t/os3vu-1615111052/post") -- TODO: parentID in url
-      (http (DataText.pack restUrl) /: "v1" /:"filesystem"/: "43564654" /: "upload") -- TODO: parentID in url
+      (http (DataText.pack restUrl) /: "v1" /:"filesystem" /: DataText.pack fileId /: "upload") -- TODO: parentID in url
       (ReqBodyJson payload) -- use built-in options or add your own
       bsResponse  -- specify how to interpret response
       (header "Authorization" (getOneHeader allheaders "Authorization") <> port 8080) -- parentID not in Headers
