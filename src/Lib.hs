@@ -1,11 +1,14 @@
 module Lib
-    ( someFunc, typeFieldRename
+    ( typeFieldRename, getPathFromFileId
     ) where
 
-someFunc :: IO ()
-someFunc = putStrLn "someFunc"
 
 
 typeFieldRename :: String -> String
 typeFieldRename "filesystem_type" = "type"
 typeFieldRename name = name
+
+
+
+getPathFromFileId :: String -> String
+getPathFromFileId id=head id :  ("/" ++id)

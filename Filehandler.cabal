@@ -34,21 +34,6 @@ library
       src
   build-depends:
       base >=4.7 && <5
-    , req
-    , shakespeare
-    , wai
-    , wai-app-static
-    , wai-extra
-    , warp
-    , network
-    , text
-    , aeson
-    , filepath
-    , http-types
-    , bytestring
-    , directory
-    , case-insensitive
-    , blaze-html
   default-language: Haskell2010
 
 executable Filehandler-exe
@@ -90,9 +75,6 @@ test-suite Filehandler-test
   build-depends:
       Filehandler
     , base >=4.7 && <5
-    , req
-    , shakespeare
-    , wai-app-static
-    , wai-extra
-    , warp
+    , hspec
+    , QuickCheck
   default-language: Haskell2010

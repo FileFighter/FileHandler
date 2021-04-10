@@ -249,7 +249,7 @@ delete req send = do
                                 [ ("Content-Type", "application/json; charset=utf-8")]
                                 (encode $ RestApiStatus err "Internal Server Error")
                 Right fileObjects -> do
-                    mapM deleteFile fileObjects
+                    mapM_ deleteFile fileObjects
                     send $ responseLBS
                                     HttpTypes.status200
                                     [ ("Content-Type", "application/json; charset=utf-8")]
@@ -288,9 +288,6 @@ logStdOut text = do
         putStrLn text
         hFlush stdout 
 
-
-getPathFromFileId :: String -> String
-getPathFromFileId id=head id :  ("/" ++id)
 
 
 deleteFile :: RestResponseFile -> IO ()
