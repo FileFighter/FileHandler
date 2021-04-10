@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, DeriveGeneric, DuplicateRecordFields #-}
-
+{-# LANGUAGE TemplateHaskell #-}
 
 module Main where
 
@@ -19,6 +19,7 @@ import           System.Environment
 import           System.FilePath
 import Control.Monad.IO.Class
 import Data.Aeson
+import Data.Aeson.TH(deriveJSON, defaultOptions, Options(fieldLabelModifier))
 import Network.HTTP.Req
 import Data.CaseInsensitive
 import qualified Data.Text as DataText
@@ -28,6 +29,34 @@ import System.Directory
 import Control.Monad.State
 import System.IO
 import Control.Monad.Trans.Resource
+
+
+
+data User = 
+    User {
+        userId :: Int 
+        , username :: String
+        , groups :: [String]
+    } deriving (Show,Generic)
+
+instance FromJSON User
+instance ToJSON User
+
+data RestResponseFile =
+  RestResponseFile { 
+            fileSystemId :: !String  
+            , name :: !String
+            , path :: !String
+            , size :: Int 
+            , createdByUser :: User
+            , lastUpdated :: Int 
+            , mimetype :: String
+            , filesystemType :: String
+            , shared :: Bool 
+           } deriving (Show,Generic)
+
+$(deriveJSON defaultOptions {fieldLabelModifier = typeFieldRename} ''RestResponseFile)
+
 
 
 -- | Entrypoint to our application
@@ -64,6 +93,8 @@ app req send =
 
         ["data","download"] -> download req send
 
+        ["data","delete",id] -> delete req send
+
         -- anything else: 404
         missingEndpoint -> send $ responseLBS
             HttpTypes.status404
@@ -74,6 +105,8 @@ app req send =
 
 
 -- | Handle file uploads, storing the file in the current directory
+
+
 upload :: Application 
 upload req send =do
     tempFileState <- createInternalState
@@ -91,12 +124,10 @@ upload req send =do
         Just file -> do
             let content = fileContent file
             restUrl <- getRestUrl
-            filesize <- withFile content ReadMode hFileSize
-
-            -- Write it out
+            filesize <- withFile content ReadMode hFileSize            
             (responseBody, responseStatusCode, responseStatusMessage) <- postApi headers file filesize restUrl (DataText.unpack $ pathInfo  req!!2)
             case responseStatusCode of
-                200 -> do
+                201 -> do
                     let d = (eitherDecode $ L.fromStrict responseBody ) :: (Either String RestResponseFile)
                     case d of
                         Left err -> do
@@ -108,7 +139,7 @@ upload req send =do
                         Right fileObject -> do 
                                 let id = fileSystemId (fileObject ::RestResponseFile)
                                 createDirectoryIfMissing True [head id]
-                                renameFile content (head id :  ("/" ++id))
+                                renameFile content (getPathFromFileId id)
                                 logStdOut ("Uploaded " ++ (head id :  ("/" ++id)))
                                 closeInternalState tempFileState
                                 send $ responseLBS
@@ -129,7 +160,7 @@ postApi allheaders file size restUrl fileId= runReq (defaultHttpConfig {httpConf
         object
           [ "name" .= S8.unpack (fileName file),
             "path" .= S8.unpack (fileName file),
-            "mimetype" .= S8.unpack (fileContentType file),
+            "mimeType" .= S8.unpack (fileContentType file),
             "size" .= size 
           ]
 
@@ -145,7 +176,7 @@ postApi allheaders file size restUrl fileId= runReq (defaultHttpConfig {httpConf
       bsResponse  -- specify how to interpret response
       (header "Authorization" (getOneHeader allheaders "Authorization") <> port 8080) -- parentID not in Headers
      -- mempty -- query params, headers, explicit port number, etc.
-  liftIO $ logStdOut $ show $responseBody r
+  liftIO $ logStdOut $ S8.unpack (fileContentType file)
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
 
@@ -200,10 +231,45 @@ getApi allheaders restUrl= runReq (defaultHttpConfig {httpConfigCheckResponse = 
       bsResponse  -- specify how to interpret response
       (header "X-FF-IDS" (getOneHeader allheaders "X-FF-IDS" ) <> header "Authorization" (getOneHeader allheaders "Authorization") <> port 80)
      -- mempty -- query params, headers, explicit port number, etc.
-  liftIO $ logStdOut $ show $responseBody r
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
 
+delete :: Application 
+delete req send = do
+    let headers = requestHeaders req
+    restUrl <- getRestUrl
+    (responseBody, responseStatusCode, responseStatusMessage) <- deleteApi headers restUrl (DataText.unpack $ pathInfo  req!!2)
+    case responseStatusCode of
+        200 -> do
+            let d = (eitherDecode $ L.fromStrict responseBody ) :: (Either String [RestResponseFile])
+            case d of
+                Left err -> 
+                    send $ responseLBS
+                                HttpTypes.status500
+                                [ ("Content-Type", "application/json; charset=utf-8")]
+                                (encode $ RestApiStatus err "Internal Server Error")
+                Right fileObjects -> do
+                    mapM deleteFile fileObjects
+                    send $ responseLBS
+                                    HttpTypes.status200
+                                    [ ("Content-Type", "application/json; charset=utf-8")]
+                                     (L.fromStrict responseBody)
+        _ -> send $ responseLBS
+                    (HttpTypes.mkStatus responseStatusCode responseStatusMessage)
+                    [ ("Content-Type", "application/json; charset=utf-8")]
+                    (L.fromStrict responseBody)
+
+
+deleteApi :: [HttpTypes.Header] -> String -> String ->  IO (S8.ByteString , Int, S8.ByteString)
+deleteApi allheaders restUrl fileId = runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
+    r <-
+        req
+        DELETE 
+        (http (DataText.pack restUrl) /: "v1" /:"filesystem" /: DataText.pack fileId /: "delete") -- TODO: parentID in url
+        NoReqBody  
+        bsResponse
+        (header "Authorization" (getOneHeader allheaders "Authorization") <> port 8080) -- parentID not in Headers
+    return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
 --debug :: [Param] -> IO()
  --debug what =
@@ -223,33 +289,20 @@ logStdOut text = do
         hFlush stdout 
 
 
+getPathFromFileId :: String -> String
+getPathFromFileId id=head id :  ("/" ++id)
+
+
+deleteFile :: RestResponseFile -> IO ()
+deleteFile file = case filesystemType file of 
+                    "FOLDER" -> logStdOut "did not delete folder"
+                    _ -> removeFile $ getPathFromFileId (fileSystemId file)
+
+
 httpConfigDontCheckResponse :: p1 -> p2 -> p3 -> Maybe a
 httpConfigDontCheckResponse _ _ _ = Nothing
 
 
-data RestResponseFile =
-  GetResponseFile { 
-            fileSystemId :: !String  
-            , name :: !String
-            , path :: !String
-            , size :: Int 
-            , createdByUser :: User
-            , lastUpdated :: Int 
-            , mimetype :: String
-            , shared :: Bool 
-           } deriving (Show,Generic)
-
-instance FromJSON RestResponseFile
-instance ToJSON RestResponseFile
-data User = 
-    User {
-        userId :: Int 
-        , username :: String
-        , groups :: [String]
-    } deriving (Show,Generic)
-
-instance FromJSON User
-instance ToJSON User
 
 
 data RestApiStatus = 
