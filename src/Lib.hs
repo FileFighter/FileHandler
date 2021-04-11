@@ -5,7 +5,8 @@ module Lib
 
 
 typeFieldRename :: String -> String
-typeFieldRename "filesystem_type" = "type"
+typeFieldRename "filesystemType" = "type"
+typeFieldRename "type" = "filesystemType"
 typeFieldRename name = name
 
 

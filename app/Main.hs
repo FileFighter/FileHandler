@@ -55,8 +55,11 @@ data RestResponseFile =
             , shared :: Bool 
            } deriving (Show,Generic)
 
-$(deriveJSON defaultOptions {fieldLabelModifier = typeFieldRename} ''RestResponseFile)
+-- $(deriveJSON defaultOptions {fieldLabelModifier = typeFieldRename} ''RestResponseFile)
 
+instance FromJSON RestResponseFile where
+  parseJSON = genericParseJSON defaultOptions {
+                fieldLabelModifier = typeFieldRename }
 
 
 -- | Entrypoint to our application
@@ -177,6 +180,7 @@ postApi allheaders file size restUrl fileId= runReq (defaultHttpConfig {httpConf
       (header "Authorization" (getOneHeader allheaders "Authorization") <> port 8080) -- parentID not in Headers
      -- mempty -- query params, headers, explicit port number, etc.
   liftIO $ logStdOut $ S8.unpack (fileContentType file)
+  liftIO $ logStdOut $ S8.unpack (responseBody r)
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
 
@@ -236,6 +240,7 @@ getApi allheaders restUrl= runReq (defaultHttpConfig {httpConfigCheckResponse = 
 
 delete :: Application 
 delete req send = do
+    logStdOut "requesting delete"
     let headers = requestHeaders req
     restUrl <- getRestUrl
     (responseBody, responseStatusCode, responseStatusMessage) <- deleteApi headers restUrl (DataText.unpack $ pathInfo  req!!2)
@@ -249,7 +254,7 @@ delete req send = do
                                 [ ("Content-Type", "application/json; charset=utf-8")]
                                 (encode $ RestApiStatus err "Internal Server Error")
                 Right fileObjects -> do
-                    mapM_ deleteFile fileObjects
+                    mapM_ deleteFile (filter filterFiles fileObjects)
                     send $ responseLBS
                                     HttpTypes.status200
                                     [ ("Content-Type", "application/json; charset=utf-8")]
@@ -265,10 +270,12 @@ deleteApi allheaders restUrl fileId = runReq (defaultHttpConfig {httpConfigCheck
     r <-
         req
         DELETE 
+        --(http "ptsv2.com" /: "t/vmlnd-1614506338/post")
         (http (DataText.pack restUrl) /: "v1" /:"filesystem" /: DataText.pack fileId /: "delete") -- TODO: parentID in url
         NoReqBody  
         bsResponse
         (header "Authorization" (getOneHeader allheaders "Authorization") <> port 8080) -- parentID not in Headers
+    liftIO $ logStdOut $ S8.unpack (responseBody r)
     return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
 --debug :: [Param] -> IO()
@@ -291,9 +298,12 @@ logStdOut text = do
 
 
 deleteFile :: RestResponseFile -> IO ()
-deleteFile file = case filesystemType file of 
-                    "FOLDER" -> logStdOut "did not delete folder"
-                    _ -> removeFile $ getPathFromFileId (fileSystemId file)
+deleteFile file = removeFile $ getPathFromFileId (fileSystemId file)
+
+filterFiles :: RestResponseFile -> Bool
+filterFiles file = case filesystemType file of 
+                    "FOLDER" -> False
+                    _ -> True
 
 
 httpConfigDontCheckResponse :: p1 -> p2 -> p3 -> Maybe a
@@ -313,7 +323,7 @@ instance ToJSON RestApiStatus
 
 devCorsPolicy = Just CorsResourcePolicy {
         corsOrigins = Nothing
-        , corsMethods = ["GET","POST"]
+        , corsMethods = ["GET","POST","DELETE"]
         , corsRequestHeaders = ["Authorization", "content-type","X-FF-IDS","X-FF-ID"]
         , corsExposedHeaders =  Just ["Content-Disposition"]
         , corsMaxAge = Just $ 60*60*24 -- one day
@@ -322,18 +332,7 @@ devCorsPolicy = Just CorsResourcePolicy {
         , corsIgnoreFailures = False
       }
 
--- maybe needed for prod?
-prodCorsPolicy = Just CorsResourcePolicy {
-        corsOrigins = Nothing
-        , corsMethods = ["GET","POST"]
-        , corsRequestHeaders = ["Authorization", "content-type","X-FF-IDS","X-FF-ID"]
-        , corsExposedHeaders = Nothing
-        , corsMaxAge = Just $ 60*60*24 -- one day
-        , corsVaryOrigin = False
-        , corsRequireOrigin = False 
-        , corsIgnoreFailures = False
-      }
-      
+
 
 getRestUrl :: IO String
 getRestUrl=head <$> getArgs
