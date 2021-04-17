@@ -1,5 +1,4 @@
-{-# LANGUAGE OverloadedStrings, DeriveGeneric, DuplicateRecordFields #-}
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE OverloadedStrings, DeriveGeneric, DuplicateRecordFields, TemplateHaskell #-}
 
 module Main where
 
@@ -55,7 +54,7 @@ data RestResponseFile =
             , shared :: Bool 
            } deriving (Show,Generic)
 
--- $(deriveJSON defaultOptions {fieldLabelModifier = typeFieldRename} ''RestResponseFile)
+
 
 instance FromJSON RestResponseFile where
   parseJSON = genericParseJSON defaultOptions {
@@ -98,6 +97,8 @@ app req send =
 
         ["data","delete",id] -> delete req send
 
+        ["data","health"] -> health req send 
+
         -- anything else: 404
         missingEndpoint -> send $ responseLBS
             HttpTypes.status404
@@ -105,9 +106,6 @@ app req send =
             (encode $ RestApiStatus ("FileHandler: This endpoint does not exist." ++ show missingEndpoint) "Not Found")
 
 
-
-
--- | Handle file uploads, storing the file in the current directory
 
 
 upload :: Application 
@@ -127,8 +125,7 @@ upload req send =do
         Just file -> do
             let content = fileContent file
             restUrl <- getRestUrl
-            filesize <- withFile content ReadMode hFileSize            
-            (responseBody, responseStatusCode, responseStatusMessage) <- postApi headers file filesize restUrl (DataText.unpack $ pathInfo  req!!2)
+            (responseBody, responseStatusCode, responseStatusMessage) <- postApi headers file restUrl (DataText.unpack $ pathInfo  req!!2)
             case responseStatusCode of
                 201 -> do
                     let d = (eitherDecode $ L.fromStrict responseBody ) :: (Either String RestResponseFile)
@@ -157,28 +154,25 @@ upload req send =do
                         (L.fromStrict responseBody)
 
 
-postApi :: [HttpTypes.Header] -> Network.Wai.Parse.FileInfo c -> Integer -> String -> String -> IO (S8.ByteString , Int, S8.ByteString)
-postApi allheaders file size restUrl fileId= runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
+postApi :: [HttpTypes.Header] -> Network.Wai.Parse.FileInfo c -> String -> String -> IO (S8.ByteString , Int, S8.ByteString)
+postApi allHeaders file restUrl fileId= runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
   let payload =
         object
-          [ "name" .= S8.unpack (fileName file),
-            "path" .= S8.unpack (fileName file),
+          [ "name" .= S8.unpack (getOneHeader allHeaders "X-FF-NAME"), -- name and path are taken from headers 
+            "path" .= S8.unpack (getOneHeader allHeaders "X-FF-PATH"), -- because they could have been change by the user in the frontend
             "mimeType" .= S8.unpack (fileContentType file),
-            "size" .= size 
+            "size" .= S8.unpack (getOneHeader allHeaders "X-FF-SIZE") 
           ]
 
 
-  -- One function—full power and flexibility, automatic retrying on timeouts
-  -- and such, automatic connection sharing.
   r <-
     req
       POST -- method
-      --(http (DataText.pack restUrl) /: "t/os3vu-1615111052/post") -- TODO: parentID in url
-      (http (DataText.pack restUrl) /: "v1" /:"filesystem" /: DataText.pack fileId /: "upload") -- TODO: parentID in url
+      --(http (DataText.pack restUrl) /: "t/os3vu-1615111052/post") 
+      (http (DataText.pack restUrl) /: "v1" /:"filesystem" /: DataText.pack fileId /: "upload")
       (ReqBodyJson payload) -- use built-in options or add your own
       bsResponse  -- specify how to interpret response
-      (header "Authorization" (getOneHeader allheaders "Authorization") <> port 8080) -- parentID not in Headers
-     -- mempty -- query params, headers, explicit port number, etc.
+      (header "Authorization" (getOneHeader allHeaders "Authorization") <> port 8080)
   liftIO $ logStdOut $ S8.unpack (fileContentType file)
   liftIO $ logStdOut $ S8.unpack (responseBody r)
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
@@ -225,7 +219,7 @@ download req send = do
 
 
 getApi :: [HttpTypes.Header] -> String -> IO (S8.ByteString , Int, S8.ByteString)
-getApi allheaders restUrl= runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
+getApi allHeaders restUrl= runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
   r <-
     req
       GET -- method
@@ -233,7 +227,7 @@ getApi allheaders restUrl= runReq (defaultHttpConfig {httpConfigCheckResponse = 
       (http (DataText.pack restUrl) /: "health" /: "fgsdhjfgh") -- safe by construction URL
       NoReqBody -- use built-in options or add your own
       bsResponse  -- specify how to interpret response
-      (header "X-FF-IDS" (getOneHeader allheaders "X-FF-IDS" ) <> header "Authorization" (getOneHeader allheaders "Authorization") <> port 80)
+      (header "X-FF-IDS" (getOneHeader allHeaders "X-FF-IDS" ) <> header "Authorization" (getOneHeader allHeaders "Authorization") <> port 80)
      -- mempty -- query params, headers, explicit port number, etc.
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
@@ -266,7 +260,7 @@ delete req send = do
 
 
 deleteApi :: [HttpTypes.Header] -> String -> String ->  IO (S8.ByteString , Int, S8.ByteString)
-deleteApi allheaders restUrl fileId = runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
+deleteApi allHeaders restUrl fileId = runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
     r <-
         req
         DELETE 
@@ -274,13 +268,24 @@ deleteApi allheaders restUrl fileId = runReq (defaultHttpConfig {httpConfigCheck
         (http (DataText.pack restUrl) /: "v1" /:"filesystem" /: DataText.pack fileId /: "delete") -- TODO: parentID in url
         NoReqBody  
         bsResponse
-        (header "Authorization" (getOneHeader allheaders "Authorization") <> port 8080) -- parentID not in Headers
+        (header "Authorization" (getOneHeader allHeaders "Authorization") <> port 8080) -- parentID not in Headers
     liftIO $ logStdOut $ S8.unpack (responseBody r)
     return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
---debug :: [Param] -> IO()
- --debug what =
-   -- putStrLn (S8.unpack (snd (Prelude.head what)))
+health :: Application 
+health req send = do
+    deploymentType <- getDeploymentType
+    let response =
+            object 
+                [ "version" .= ("1.0.0" :: String),
+                  "deploymentType" .= deploymentType
+                ] 
+    send $ responseLBS
+                                    HttpTypes.status200
+                                    [ ("Content-Type", "application/json; charset=utf-8")]
+                                    (encode response)
+
+
 
 
 getOneHeader :: [HttpTypes.Header] -> String -> S8.ByteString
@@ -324,7 +329,7 @@ instance ToJSON RestApiStatus
 devCorsPolicy = Just CorsResourcePolicy {
         corsOrigins = Nothing
         , corsMethods = ["GET","POST","DELETE"]
-        , corsRequestHeaders = ["Authorization", "content-type","X-FF-IDS","X-FF-ID"]
+        , corsRequestHeaders = ["Authorization", "content-type","X-FF-IDS","X-FF-ID","X-FF-NAME","X-FF-PATH","X-FF-SIZE"]
         , corsExposedHeaders =  Just ["Content-Disposition"]
         , corsMaxAge = Just $ 60*60*24 -- one day
         , corsVaryOrigin = False
@@ -336,3 +341,7 @@ devCorsPolicy = Just CorsResourcePolicy {
 
 getRestUrl :: IO String
 getRestUrl=head <$> getArgs
+
+
+getDeploymentType :: IO String
+getDeploymentType=head .  tail <$> getArgs
