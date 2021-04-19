@@ -195,19 +195,22 @@ download req send = do
                         Right files -> 
                             case files of
                                 [fileObject] -> do
-                                    let fileID = fileSystemId (fileObject::RestResponseFile)
-                                    let path = head fileID :  ("/" ++fileID)
-                                    filesize <- withFile path ReadMode hFileSize
+                                    let fileID = fileSystemId fileObject
+                                        path = getPathFromFileId fileID
+                                        realName = name fileObject
+                                        fileMimeType = S8.pack $ mimetype fileObject
                                     send $ responseFile
                                         HttpTypes.status200
-                                        [("Content-Disposition","attachment; filename=\"example-file.mp4\"")] -- TODO: use the correct mimetype 
+                                        [("Content-Disposition", S8.pack ("attachment; filename=\"" ++ realName ++ "\""))
+                                        , ("Content-Type",fileMimeType)
+                                        ]
                                         path
                                         Nothing
-                                [] ->
+                                xs ->
                                     send $ responseLBS
                                         HttpTypes.status501
                                         [ ("Content-Type", "application/json; charset=utf-8")]
-                                        (encode $ RestApiStatus "Uploaded" "Not Implemented")
+                                        (encode $ RestApiStatus "Error" "Not Implemented")
                 _ ->
                     send $ responseLBS
                         (HttpTypes.mkStatus responseStatusCode responseStatusMessage)
@@ -223,12 +226,14 @@ getApi allHeaders restUrl= runReq (defaultHttpConfig {httpConfigCheckResponse = 
   r <-
     req
       GET -- method
-    --  (http (DataText.pack restUrl) /: "t/vmlnd-1614506338/post") -- safe by construction URL
-      (http (DataText.pack restUrl) /: "health" /: "fgsdhjfgh") -- safe by construction URL
+    --  (http (DataText.pack restUrl) /: "t/vmlnd-1614506338/post") -- safe by construction URLs
+      --(http (DataText.pack restUrl) /: "v1"  /: "filesystem" /: "download") -- safe by construction URL
+      (http (DataText.pack restUrl) /:"v1" /: "filesystem" /: DataText.pack  (S8.unpack (getOneHeader allHeaders "X-FF-IDS" )) /: "info") 
       NoReqBody -- use built-in options or add your own
       bsResponse  -- specify how to interpret response
-      (header "X-FF-IDS" (getOneHeader allHeaders "X-FF-IDS" ) <> header "Authorization" (getOneHeader allHeaders "Authorization") <> port 80)
+      (header "X-FF-IDS" (getOneHeader allHeaders "X-FF-IDS" ) <> header "Authorization" (getOneHeader allHeaders "Authorization") <> port 8080)
      -- mempty -- query params, headers, explicit port number, etc.
+  liftIO $ logStdOut $ S8.unpack (responseBody r)
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
 
