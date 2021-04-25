@@ -27,7 +27,9 @@ import GHC.Generics
 import System.Directory
 import Control.Monad.State
 import System.IO
+import System.IO.Temp
 import Control.Monad.Trans.Resource
+import Codec.Archive.Zip
 
 
 
@@ -183,6 +185,7 @@ download :: Application
 download req send = do
     let headers = requestHeaders req
     restUrl <- getRestUrl
+    logStdOut "download"
     (responseBody, responseStatusCode, responseStatusMessage) <- getApi headers restUrl
     case responseStatusCode of
                 200 -> do
@@ -206,11 +209,19 @@ download req send = do
                                         ]
                                         path
                                         Nothing
-                                xs ->
-                                    send $ responseLBS
-                                        HttpTypes.status501
-                                        [ ("Content-Type", "application/json; charset=utf-8")]
-                                        (encode $ RestApiStatus "Error" "Not Implemented")
+                                xs -> 
+                                    withSystemTempFile "FileFighterFileHandler.zip" $ 
+                                        \tmpFileName handle-> 
+                                        do  let nameOfTheFolder = "NameOfTheFolderToDownload.zip"
+                                            let ss = mapM (\n -> do inZipPath <- mkEntrySelector (path n)
+                                                                    loadEntry Store inZipPath (getPathFromFileId (fileSystemId n))) 
+                                                        xs
+                                            createArchive tmpFileName ss
+                                            send $ responseFileDeleting'
+                                                [("Content-Disposition", S8.pack ("attachment; filename=\"" ++ nameOfTheFolder ++ "\""))
+                                                , ("Content-Type","application/zip")
+                                                ]
+                                                tmpFileName
                 _ ->
                     send $ responseLBS
                         (HttpTypes.mkStatus responseStatusCode responseStatusMessage)
@@ -226,12 +237,12 @@ getApi allHeaders restUrl= runReq (defaultHttpConfig {httpConfigCheckResponse = 
   r <-
     req
       GET -- method
-    --  (http (DataText.pack restUrl) /: "t/vmlnd-1614506338/post") -- safe by construction URLs
+     (http "ptsv2.com" /: "t/vmlnd-1614506338/post") -- safe by construction URLs
       --(http (DataText.pack restUrl) /: "v1"  /: "filesystem" /: "download") -- safe by construction URL
-      (http (DataText.pack restUrl) /:"v1" /: "filesystem" /: DataText.pack  (S8.unpack (getOneHeader allHeaders "X-FF-IDS" )) /: "info") 
+     -- (http (DataText.pack restUrl) /:"v1" /: "filesystem" /: DataText.pack  (S8.unpack (getOneHeader allHeaders "X-FF-IDS" )) /: "info") 
       NoReqBody -- use built-in options or add your own
       bsResponse  -- specify how to interpret response
-      (header "X-FF-IDS" (getOneHeader allHeaders "X-FF-IDS" ) <> header "Authorization" (getOneHeader allHeaders "Authorization") <> port 8080)
+      (header "X-FF-IDS" (getOneHeader allHeaders "X-FF-IDS" ) <> header "Authorization" (getOneHeader allHeaders "Authorization"))
      -- mempty -- query params, headers, explicit port number, etc.
   liftIO $ logStdOut $ S8.unpack (responseBody r)
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
@@ -319,6 +330,14 @@ filterFiles file = case filesystemType file of
 httpConfigDontCheckResponse :: p1 -> p2 -> p3 -> Maybe a
 httpConfigDontCheckResponse _ _ _ = Nothing
 
+responseFileDeleting' ::  HttpTypes.ResponseHeaders -> FilePath -> Response
+responseFileDeleting'  headers filepath= 
+    let (status,header,streamer) = 
+            responseToStream $ responseFile HttpTypes.status200 headers filepath Nothing
+     in responseStream status header (\write flush ->
+             -- this would be a good place to put a bracket, if needed
+             do streamer (\body -> body write flush)
+                removeFile filepath)
 
 
 
