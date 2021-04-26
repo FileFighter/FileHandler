@@ -217,11 +217,13 @@ download req send = do
                                                                     loadEntry Store inZipPath (getPathFromFileId (fileSystemId n))) 
                                                         xs
                                             createArchive tmpFileName ss
-                                            send $ responseFileDeleting'
+                                            send $ responseFile
+                                                HttpTypes.status200
                                                 [("Content-Disposition", S8.pack ("attachment; filename=\"" ++ nameOfTheFolder ++ "\""))
                                                 , ("Content-Type","application/zip")
                                                 ]
                                                 tmpFileName
+                                                Nothing
                 _ ->
                     send $ responseLBS
                         (HttpTypes.mkStatus responseStatusCode responseStatusMessage)
@@ -330,14 +332,6 @@ filterFiles file = case filesystemType file of
 httpConfigDontCheckResponse :: p1 -> p2 -> p3 -> Maybe a
 httpConfigDontCheckResponse _ _ _ = Nothing
 
-responseFileDeleting' ::  HttpTypes.ResponseHeaders -> FilePath -> Response
-responseFileDeleting'  headers filepath= 
-    let (status,header,streamer) = 
-            responseToStream $ responseFile HttpTypes.status200 headers filepath Nothing
-     in responseStream status header (\write flush ->
-             -- this would be a good place to put a bracket, if needed
-             do streamer (\body -> body write flush)
-                removeFile filepath)
 
 
 
