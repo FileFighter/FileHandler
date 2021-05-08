@@ -106,15 +106,21 @@ upload req send = runResourceT $ withInternalState $
                                                 HttpTypes.status500
                                                 [ ("Content-Type", "application/json; charset=utf-8")]
                                                 (encode $ RestApiStatus err "Internal Server Error")
-                                    Right filesAndFolders -> do 
-                                            let id = fileSystemId $ head (filter filterFiles filesAndFolders)
-                                            createDirectoryIfMissing True [head id]
-                                            renameFile content (getPathFromFileId id)
-                                            logStdOut ("Uploaded " ++ (head id :  ("/" ++id)))
-                                            send $ responseLBS
-                                                HttpTypes.status200
-                                                [ ("Content-Type", "application/json; charset=utf-8")]
-                                                (L.fromStrict responseBody)
+                                    Right filesAndFolders -> 
+                                            case filter filterFiles filesAndFolders of 
+                                                [] ->   send $ responseLBS
+                                                        HttpTypes.status500
+                                                        [ ("Content-Type", "application/json; charset=utf-8")]
+                                                        (encode $ RestApiStatus "No file found in rest response." "Internal Server Error")
+                                                [file] -> do 
+                                                            let id = fileSystemId file
+                                                            createDirectoryIfMissing True [head id]
+                                                            renameFile content (getPathFromFileId id)
+                                                            logStdOut ("Uploaded " ++ (head id :  ("/" ++id)))
+                                                            send $ responseLBS
+                                                                HttpTypes.status200
+                                                                [ ("Content-Type", "application/json; charset=utf-8")]
+                                                                (L.fromStrict responseBody)
                             _ -> send $ responseLBS
                                     (HttpTypes.mkStatus responseStatusCode responseStatusMessage)
                                     [ ("Content-Type", "application/json; charset=utf-8")]
@@ -261,7 +267,6 @@ health req send = do
     foldersIO <- fmap  (filterM doesDirectoryExist)  (listDirectory ".")
     folders <- foldersIO
     files <- concat <$> mapM listDirectoryRelative folders 
-    liftIO $ logStdOut $ show files
     actualFilesSize  <- sum <$>  mapM  getFileSize files
 
     let response =
