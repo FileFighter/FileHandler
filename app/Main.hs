@@ -18,7 +18,6 @@ import           System.Environment
 import           System.FilePath
 import Control.Monad.IO.Class
 import Data.Aeson
-import Data.Aeson.TH(deriveJSON, defaultOptions, Options(fieldLabelModifier))
 import Network.HTTP.Req
 import Data.CaseInsensitive
 import qualified Data.Text as DataText
@@ -32,35 +31,6 @@ import Control.Monad.Trans.Resource
 import Codec.Archive.Zip
 
 
-
-data User = 
-    User {
-        userId :: Int 
-        , username :: String
-        , groups :: [String]
-    } deriving (Show,Generic)
-
-instance FromJSON User
-instance ToJSON User
-
-data RestResponseFile =
-  RestResponseFile { 
-            fileSystemId :: !String  
-            , name :: !String
-            , path :: !String
-            , size :: Int 
-            , createdByUser :: User
-            , lastUpdated :: Int 
-            , mimetype :: String
-            , filesystemType :: String
-            , shared :: Bool 
-           } deriving (Show,Generic)
-
-
-
-instance FromJSON RestResponseFile where
-  parseJSON = genericParseJSON defaultOptions {
-                fieldLabelModifier = typeFieldRename }
 
 
 -- | Entrypoint to our application
@@ -111,49 +81,44 @@ app req send =
 
 
 upload :: Application 
-upload req send =do
-    tempFileState <- createInternalState
-    (_params, files) <- parseRequestBody (tempFileBackEnd tempFileState)  req
-    let headers = requestHeaders req
-   -- debug (_params)
-    -- Look for the file parameter called "file"
-    case lookup "file" files of
-        -- Not found, so return a 400 response
-        Nothing -> send $ responseLBS
-            HttpTypes.status400
-            [("Content-Type", "application/json; charset=utf-8")]
-            (encode $ RestApiStatus "No file parameter found" "Bad Request")
-        -- Got it!
-        Just file -> do
-            let content = fileContent file
-            restUrl <- getRestUrl
-            (responseBody, responseStatusCode, responseStatusMessage) <- postApi headers file restUrl (DataText.unpack $ pathInfo  req!!2)
-            case responseStatusCode of
-                201 -> do
-                    let d = (eitherDecode $ L.fromStrict responseBody ) :: (Either String RestResponseFile)
-                    case d of
-                        Left err -> do
-                                    closeInternalState tempFileState
-                                    send $ responseLBS
-                                      HttpTypes.status500
-                                      [ ("Content-Type", "application/json; charset=utf-8")]
-                                      (encode $ RestApiStatus err "Internal Server Error")
-                        Right fileObject -> do 
-                                let id = fileSystemId (fileObject ::RestResponseFile)
-                                createDirectoryIfMissing True [head id]
-                                renameFile content (getPathFromFileId id)
-                                logStdOut ("Uploaded " ++ (head id :  ("/" ++id)))
-                                closeInternalState tempFileState
-                                send $ responseLBS
-                                    HttpTypes.status200
+upload req send = runResourceT $ withInternalState $
+           \internalState ->
+            do  (_params, files) <- parseRequestBody (tempFileBackEnd internalState)  req
+                let headers = requestHeaders req
+            -- debug (_params)
+                -- Look for the file parameter called "file"
+                case lookup "file" files of
+                    -- Not found, so return a 400 response
+                    Nothing -> send $ responseLBS
+                        HttpTypes.status400
+                        [("Content-Type", "application/json; charset=utf-8")]
+                        (encode $ RestApiStatus "No file parameter found" "Bad Request")
+                    -- Got it!
+                    Just file -> do
+                        let content = fileContent file
+                        restUrl <- getRestUrl
+                        (responseBody, responseStatusCode, responseStatusMessage) <- postApi headers file restUrl (DataText.unpack $ pathInfo  req!!2)
+                        case responseStatusCode of
+                            201 -> do
+                                let d = (eitherDecode $ L.fromStrict responseBody ) :: (Either String [RestResponseFile])
+                                case d of
+                                    Left err -> send $ responseLBS
+                                                HttpTypes.status500
+                                                [ ("Content-Type", "application/json; charset=utf-8")]
+                                                (encode $ RestApiStatus err "Internal Server Error")
+                                    Right filesAndFolders -> do 
+                                            let id = fileSystemId $ head (filter filterFiles filesAndFolders)
+                                            createDirectoryIfMissing True [head id]
+                                            renameFile content (getPathFromFileId id)
+                                            logStdOut ("Uploaded " ++ (head id :  ("/" ++id)))
+                                            send $ responseLBS
+                                                HttpTypes.status200
+                                                [ ("Content-Type", "application/json; charset=utf-8")]
+                                                (L.fromStrict responseBody)
+                            _ -> send $ responseLBS
+                                    (HttpTypes.mkStatus responseStatusCode responseStatusMessage)
                                     [ ("Content-Type", "application/json; charset=utf-8")]
-                                     (L.fromStrict responseBody)
-                _ -> do 
-                    closeInternalState tempFileState
-                    send $ responseLBS
-                        (HttpTypes.mkStatus responseStatusCode responseStatusMessage)
-                        [ ("Content-Type", "application/json; charset=utf-8")]
-                        (L.fromStrict responseBody)
+                                    (L.fromStrict responseBody)
 
 
 postApi :: [HttpTypes.Header] -> Network.Wai.Parse.FileInfo c -> String -> String -> IO (S8.ByteString , Int, S8.ByteString)
@@ -244,7 +209,7 @@ getApi allHeaders restUrl= runReq (defaultHttpConfig {httpConfigCheckResponse = 
      -- (http (DataText.pack restUrl) /:"v1" /: "filesystem" /: DataText.pack  (S8.unpack (getOneHeader allHeaders "X-FF-IDS" )) /: "info") 
       NoReqBody -- use built-in options or add your own
       bsResponse  -- specify how to interpret response
-      (header "X-FF-IDS" (getOneHeader allHeaders "X-FF-IDS" ) <> header "Authorization" (getOneHeader allHeaders "Authorization"))
+      (header "X-FF-IDS" (getOneHeader allHeaders "X-FF-IDS" ) <> header "Authorization" (getOneHeader allHeaders "Authorization")) --PORT !!
      -- mempty -- query params, headers, explicit port number, etc.
   liftIO $ logStdOut $ S8.unpack (responseBody r)
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
@@ -293,10 +258,18 @@ deleteApi allHeaders restUrl fileId = runReq (defaultHttpConfig {httpConfigCheck
 health :: Application 
 health req send = do
     deploymentType <- getDeploymentType
+    foldersIO <- fmap  (filterM doesDirectoryExist)  (listDirectory ".")
+    folders <- foldersIO
+    files <- concat <$> mapM listDirectoryRelative folders 
+    liftIO $ logStdOut $ show files
+    actualFilesSize  <- sum <$>  mapM  getFileSize files
+
     let response =
             object 
                 [ "version" .= ("1.0.0" :: String),
-                  "deploymentType" .= deploymentType
+                  "deploymentType" .= deploymentType,
+                  "actualFilesSize" .= actualFilesSize,
+                  "fileCount" .= length files
                 ] 
     send $ responseLBS
                                     HttpTypes.status200
@@ -363,3 +336,40 @@ getRestUrl=head <$> getArgs
 
 getDeploymentType :: IO String
 getDeploymentType=head .  tail <$> getArgs
+
+
+
+data User = 
+    User {
+        userId :: Int 
+        , username :: String
+        , groups :: [String]
+    } deriving (Show,Generic)
+
+instance FromJSON User
+instance ToJSON User
+
+data RestResponseFile =
+  RestResponseFile { 
+            fileSystemId :: !String  
+            , name :: !String
+            , path :: !String
+            , size :: Int 
+            , createdByUser :: User
+            , lastUpdated :: Int 
+            , mimetype :: String
+            , filesystemType :: String
+            , shared :: Bool 
+           } deriving (Show,Generic)
+
+
+
+instance FromJSON RestResponseFile where
+  parseJSON = genericParseJSON defaultOptions {
+                fieldLabelModifier = typeFieldRename }
+
+
+
+
+listDirectoryRelative:: FilePath -> IO [FilePath]
+listDirectoryRelative x = Prelude.map (x </>) <$> listDirectory x
