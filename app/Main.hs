@@ -50,6 +50,10 @@ main = do
       logStdOut "Launching DataHandler with dev profile"
       -- Run our application (defined below) on port 5000 with cors enabled
       run 5000 $ cors (const devCorsPolicy) app
+    [restUrl, "stage"] -> do
+      logStdOut "Launching DataHandler with dev profile"
+      -- Run our application (defined below) on port 5000 with cors enabled
+      run 5000 $ cors (const devCorsPolicy) app
     [restUrl, "prod"] -> do
       logStdOut "Launching DataHandler with prod profile"
       -- Run our application (defined below) on port 5000
@@ -115,7 +119,7 @@ upload req send = runResourceT $
                             [("Content-Type", "application/json; charset=utf-8")]
                             (encode $ RestApiStatus "No file found in rest response." "Internal Server Error")
                       [file] -> do
-                        let id = fileSystemId file
+                        let id = show $ fileSystemId file
                         createDirectoryIfMissing True [head id]
                         renameFile content (getPathFromFileId id)
                         logStdOut ("Uploaded " ++ (head id : ("/" ++ id)))
@@ -145,10 +149,11 @@ postApi allHeaders file restUrl fileId = runReq (defaultHttpConfig {httpConfigCh
     req
       POST -- method
       --(http (DataText.pack restUrl) /: "t/os3vu-1615111052/post")
-      (http (DataText.pack restUrl) /: "v1" /: "filesystem" /: DataText.pack fileId /: "upload")
+      (http (DataText.pack restUrl) /: "api" /: "v1" /: "filesystem" /: DataText.pack fileId /: "upload")
       (ReqBodyJson payload) -- use built-in options or add your own
       bsResponse -- specify how to interpret response
       (header "Authorization" (getOneHeader allHeaders "Authorization") <> port 8080)
+  liftIO $ logStdOut  (show (http (DataText.pack restUrl) /: "api" /: "v1" /: "filesystem" /: DataText.pack fileId /: "upload"))
   liftIO $ logStdOut $ S8.unpack (fileContentType file)
   liftIO $ logStdOut $ S8.unpack (responseBody r)
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
@@ -173,9 +178,9 @@ download req send = do
           case files of
             [fileObject] -> do
               let fileID = fileSystemId fileObject
-                  path = getPathFromFileId fileID
+                  path = getPathFromFileId $ show fileID
                   realName = name fileObject
-                  fileMimeType = S8.pack $ mimetype fileObject
+                  fileMimeType = S8.pack $ mimeType fileObject
               send $
                 responseFile
                   HttpTypes.status200
@@ -193,7 +198,7 @@ download req send = do
                           mapM
                             ( \n -> do
                                 inZipPath <- mkEntrySelector (path n)
-                                loadEntry Store inZipPath (getPathFromFileId (fileSystemId n))
+                                loadEntry Store inZipPath (getPathFromFileId (show $ fileSystemId n))
                             )
                             xs
                     createArchive tmpFileName ss
@@ -217,12 +222,12 @@ getApi allHeaders restUrl = runReq (defaultHttpConfig {httpConfigCheckResponse =
   r <-
     req
       GET -- method
-      (http "ptsv2.com" /: "t/vmlnd-1614506338/post") -- safe by construction URLs
-      --(http (DataText.pack restUrl) /: "v1"  /: "filesystem" /: "download") -- safe by construction URL
+      --(http "ptsv2.com" /: "t/vmlnd-1614506338/post") -- safe by construction URLs
+      (http (DataText.pack restUrl) /: "v1"  /: "filesystem" /: "download") -- safe by construction URL
       -- (http (DataText.pack restUrl) /:"v1" /: "filesystem" /: DataText.pack  (S8.unpack (getOneHeader allHeaders "X-FF-IDS" )) /: "info")
       NoReqBody -- use built-in options or add your own
       bsResponse -- specify how to interpret response
-      (header "X-FF-IDS" (getOneHeader allHeaders "X-FF-IDS") <> header "Authorization" (getOneHeader allHeaders "Authorization")) --PORT !!
+      (header "X-FF-IDS" (getOneHeader allHeaders "X-FF-IDS") <> header "Authorization" (getOneHeader allHeaders "Authorization")  <> port 8080) --PORT !!
       -- mempty -- query params, headers, explicit port number, etc.
   liftIO $ logStdOut $ S8.unpack (responseBody r)
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
@@ -263,7 +268,7 @@ deleteApi allHeaders restUrl fileId = runReq (defaultHttpConfig {httpConfigCheck
     req
       DELETE
       --(http "ptsv2.com" /: "t/vmlnd-1614506338/post")
-      (http (DataText.pack restUrl) /: "v1" /: "filesystem" /: DataText.pack fileId /: "delete") -- TODO: parentID in url
+      (http (DataText.pack restUrl) /: "v1" /: "filesystem" /: DataText.pack fileId /: "delete") 
       NoReqBody
       bsResponse
       (header "Authorization" (getOneHeader allHeaders "Authorization") <> port 8080) -- parentID not in Headers
@@ -304,7 +309,7 @@ logStdOut text = do
   hFlush stdout
 
 deleteFile :: RestResponseFile -> IO ()
-deleteFile file = removeFile $ getPathFromFileId (fileSystemId file)
+deleteFile file = removeFile $ getPathFromFileId (show $ fileSystemId file)
 
 filterFiles :: RestResponseFile -> Bool
 filterFiles file = case filesystemType file of
@@ -355,13 +360,14 @@ instance FromJSON User
 instance ToJSON User
 
 data RestResponseFile = RestResponseFile
-  { fileSystemId :: !String,
+  { fileSystemId :: !Int,
     name :: !String,
     path :: !String,
     size :: Int,
-    createdByUser :: User,
+    owner :: User,
+    lastUpdatedBy :: User,
     lastUpdated :: Int,
-    mimetype :: String,
+    mimeType :: String,
     filesystemType :: String,
     shared :: Bool
   }

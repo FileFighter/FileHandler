@@ -2,6 +2,7 @@ FROM ubuntu:latest
 
 ARG BINLOCATION
 ENV RESTURL=FileFighterREST
+ENV PROFILE=prod
 
 RUN apt-get update && apt-get upgrade -y
 
@@ -16,6 +17,6 @@ USER appuser
 # We're all ready, now just configure our image to run the server on
 # launch from the correct working directory.
 # using exec solves ctl + c issues
-CMD exec /usr/local/bin/filehandler-exe ${RESTURL} "prod"
+CMD exec /usr/local/bin/filehandler-exe ${RESTURL} $PROFILE
 WORKDIR /workdir
 EXPOSE 5000
