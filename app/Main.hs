@@ -180,12 +180,12 @@ download req send = do
               let fileID = fileSystemId fileObject
                   path = getPathFromFileId $ show fileID
                   realName = name fileObject
-                  fileMimeType = S8.pack $ mimeType fileObject
+                  fileMimeType = mimeType fileObject
               send $
                 responseFile
                   HttpTypes.status200
                   [ ("Content-Disposition", S8.pack ("attachment; filename=\"" ++ realName ++ "\"")),
-                    ("Content-Type", fileMimeType)
+                    ("Content-Type", "fileMimeType") -- Todo
                   ]
                   path
                   Nothing
@@ -367,7 +367,7 @@ data RestResponseFile = RestResponseFile
     owner :: User,
     lastUpdatedBy :: User,
     lastUpdated :: Int,
-    mimeType :: String,
+    mimeType :: Maybe String,
     filesystemType :: String,
     shared :: Bool
   }
@@ -377,7 +377,8 @@ instance FromJSON RestResponseFile where
   parseJSON =
     genericParseJSON
       defaultOptions
-        { fieldLabelModifier = typeFieldRename
+        { fieldLabelModifier = typeFieldRename,
+          omitNothingFields = True
         }
 
 listDirectoryRelative :: FilePath -> IO [FilePath]
