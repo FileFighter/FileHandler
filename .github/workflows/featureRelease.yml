@@ -1,0 +1,37 @@
+name: Feature Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+     - 'featureWithPipeline/**'
+    paths:
+      - 'app/**'
+      - 'src/**'
+      - 'test/**'
+
+jobs:
+  Build_Docker_Image_on_Push:
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Set up Project
+        uses: actions/checkout@v2
+      -
+        name: Build Filehandler
+        run: |
+          stack build
+          
+      -
+        name: Login to DockerHub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_PW }}
+      -
+        name: Build and push
+        run: |
+          BINLOCATION=$(stack path --local-install-root)
+          BINLOCATION=$(realpath --relative-to=. $BINLOCATION)
+          docker build -t filefighter/filehandler:feature . --build-arg BINLOCATION=$BINLOCATION
+          docker push filefighter/filehandler:feature
