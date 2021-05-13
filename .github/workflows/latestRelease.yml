@@ -5,6 +5,7 @@ on:
   push:
     branches: "master"
     paths:
+      - '.github/workflows/latestRelease.yml'
       - 'app/**'
       - 'src/**'
       - 'test/**'
