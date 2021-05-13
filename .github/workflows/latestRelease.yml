@@ -36,5 +36,5 @@ jobs:
           docker push filefighter/filehandler:latest
       -
         name: Trigger update on server
-        run:
-          - curl -u ${{ secrets.LOG_CREDS }} https://logs.filefighter.de/filefighter-update.log
+        run: |
+          curl -f -u ${{ secrets.LOG_CREDS }} https://logs.filefighter.de/filefighter-update-script.log
