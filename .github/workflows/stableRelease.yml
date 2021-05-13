@@ -1,14 +1,9 @@
-name: Latest Release
+name: Stable Release
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-     - 'feature/**'
-    paths:
-      - 'app/**'
-      - 'src/**'
-      - 'test/**'
+    tags:
+      - 'v*.*.*'
 
 jobs:
   Build_Docker_Image_on_Push:
@@ -31,7 +26,9 @@ jobs:
       -
         name: Build and push
         run: |
+          VERSION=${{ steps.vars.outputs.tag }}
           BINLOCATION=$(stack path --local-install-root)
           BINLOCATION=$(realpath --relative-to=. $BINLOCATION)
-          docker build -t filefighter/filehandler:feature . --build-arg BINLOCATION=$BINLOCATION
-          docker push filefighter/filehandler:feature
+          docker build -t filefighter/filehandler:$VERSION -t filefighter/filehandler:stable . --build-arg BINLOCATION=$BINLOCATION
+          docker push filefighter/filehandler:$VERSION
+          docker push filefighter/filehandler:stable

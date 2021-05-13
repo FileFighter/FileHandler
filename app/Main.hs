@@ -121,7 +121,7 @@ upload req send = runResourceT $
                       [file] -> do
                         let id = show $ fileSystemId file
                         createDirectoryIfMissing True [head id]
-                        renameFile content (getPathFromFileId id)
+                        copyFile content (getPathFromFileId id)
                         logStdOut ("Uploaded " ++ (head id : ("/" ++ id)))
                         send $
                           responseLBS
@@ -222,7 +222,6 @@ getApi allHeaders restUrl = runReq (defaultHttpConfig {httpConfigCheckResponse =
   r <-
     req
       GET -- method
-      --(http "ptsv2.com" /: "t/vmlnd-1614506338/post") -- safe by construction URLs
       (http (DataText.pack restUrl) /: "v1"  /: "filesystem" /: "download") -- safe by construction URL
       -- (http (DataText.pack restUrl) /:"v1" /: "filesystem" /: DataText.pack  (S8.unpack (getOneHeader allHeaders "X-FF-IDS" )) /: "info")
       NoReqBody -- use built-in options or add your own
@@ -267,8 +266,7 @@ deleteApi allHeaders restUrl fileId = runReq (defaultHttpConfig {httpConfigCheck
   r <-
     req
       DELETE
-      --(http "ptsv2.com" /: "t/vmlnd-1614506338/post")
-      (http (DataText.pack restUrl) /: "v1" /: "filesystem" /: DataText.pack fileId /: "delete") 
+      (http (DataText.pack restUrl) /: "api" /: "v1" /: "filesystem" /: DataText.pack fileId /: "delete") 
       NoReqBody
       bsResponse
       (header "Authorization" (getOneHeader allHeaders "Authorization") <> port 8080) -- parentID not in Headers
