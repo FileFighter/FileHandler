@@ -1,10 +1,10 @@
-name: Latest Release
+name: Feature Release
 
 on:
   workflow_dispatch:
   push:
     branches:
-     - 'feature/**'
+     - 'featureWithPipeline/**'
     paths:
       - 'app/**'
       - 'src/**'
