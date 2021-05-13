@@ -32,6 +32,7 @@ import System.Environment
 import System.FilePath
 import System.IO
 import System.IO.Temp
+import Data.Maybe ( fromMaybe )
 
 -- | Entrypoint to our application
 main :: IO ()
@@ -180,12 +181,12 @@ download req send = do
               let fileID = fileSystemId fileObject
                   path = getPathFromFileId $ show fileID
                   realName = name fileObject
-                  fileMimeType = mimeType fileObject
+                  fileMimeType = fromMaybe "application/octet-stream" (mimeType fileObject)
               send $
                 responseFile
                   HttpTypes.status200
                   [ ("Content-Disposition", S8.pack ("attachment; filename=\"" ++ realName ++ "\"")),
-                    ("Content-Type", "fileMimeType") -- Todo
+                    ("Content-Type", S8.pack fileMimeType)
                   ]
                   path
                   Nothing
@@ -196,9 +197,9 @@ download req send = do
                     let nameOfTheFolder = "NameOfTheFolderToDownload.zip"
                     let ss =
                           mapM
-                            ( \n -> do
-                                inZipPath <- mkEntrySelector (path n)
-                                loadEntry Store inZipPath (getPathFromFileId (show $ fileSystemId n))
+                            ( \file -> do
+                                inZipPath <- mkEntrySelector $ fromMaybe (name file) (path file)
+                                loadEntry Store inZipPath (getPathFromFileId (show $ fileSystemId file))
                             )
                             xs
                     createArchive tmpFileName ss
@@ -271,6 +272,7 @@ deleteApi allHeaders restUrl fileId = runReq (defaultHttpConfig {httpConfigCheck
       bsResponse
       (header "Authorization" (getOneHeader allHeaders "Authorization") <> port 8080) -- parentID not in Headers
   liftIO $ logStdOut $ S8.unpack (responseBody r)
+  liftIO $ logStdOut (show (http (DataText.pack restUrl) /: "api" /: "v1" /: "filesystem" /: DataText.pack fileId /: "delete") )
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
 health :: Application
@@ -359,8 +361,8 @@ instance ToJSON User
 
 data RestResponseFile = RestResponseFile
   { fileSystemId :: !Int,
-    name :: !String,
-    path :: !String,
+    name ::  String,
+    path :: Maybe String,
     size :: Int,
     owner :: User,
     lastUpdatedBy :: User,
