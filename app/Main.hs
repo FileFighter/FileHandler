@@ -154,9 +154,6 @@ postApi allHeaders file restUrl fileId = runReq (defaultHttpConfig {httpConfigCh
       (ReqBodyJson payload) -- use built-in options or add your own
       bsResponse -- specify how to interpret response
       (header "Authorization" (getOneHeader allHeaders "Authorization") <> port 8080)
-  liftIO $ logStdOut  (show (http (DataText.pack restUrl) /: "api" /: "v1" /: "filesystem" /: DataText.pack fileId /: "upload"))
-  liftIO $ logStdOut $ S8.unpack (fileContentType file)
-  liftIO $ logStdOut $ S8.unpack (responseBody r)
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
 download :: Application
@@ -229,7 +226,6 @@ getApi allHeaders restUrl = runReq (defaultHttpConfig {httpConfigCheckResponse =
       bsResponse -- specify how to interpret response
       (header "X-FF-IDS" (getOneHeader allHeaders "X-FF-IDS") <> header "Authorization" (getOneHeader allHeaders "Authorization")  <> port 8080) --PORT !!
       -- mempty -- query params, headers, explicit port number, etc.
-  liftIO $ logStdOut $ S8.unpack (responseBody r)
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
 delete :: Application
@@ -271,8 +267,6 @@ deleteApi allHeaders restUrl fileId = runReq (defaultHttpConfig {httpConfigCheck
       NoReqBody
       bsResponse
       (header "Authorization" (getOneHeader allHeaders "Authorization") <> port 8080) -- parentID not in Headers
-  liftIO $ logStdOut $ S8.unpack (responseBody r)
-  liftIO $ logStdOut (show (http (DataText.pack restUrl) /: "api" /: "v1" /: "filesystem" /: DataText.pack fileId /: "delete") )
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
 health :: Application
