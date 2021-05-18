@@ -7,13 +7,13 @@ cabal-version: 1.12
 -- hash: 810c23ddfee0d410c3632560ab726ca5db1e957ed8095989f8e2e7e554eb65f4
 
 name:           Filehandler
-version:        0.1.0.0
+version:        0.0.2
 description:    Please see the README on GitHub at <https://github.com/githubuser/Filehandler#readme>
 homepage:       https://github.com/githubuser/Filehandler#readme
 bug-reports:    https://github.com/githubuser/Filehandler/issues
-author:         Author name here
+author:         FileFighter
 maintainer:     example@example.com
-copyright:      2021 Author name here
+copyright:      2021 FileFighter
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
