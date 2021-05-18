@@ -16,6 +16,7 @@ import qualified Data.ByteString.Char8 as S8
 import qualified Data.ByteString.Lazy as L
 import Data.CaseInsensitive
 import Data.Functor.Identity
+import Data.Maybe (fromMaybe)
 import qualified Data.Text as DataText
 import GHC.Generics
 import GHC.Int
@@ -32,7 +33,7 @@ import System.Environment
 import System.FilePath
 import System.IO
 import System.IO.Temp
-import Data.Maybe ( fromMaybe )
+import GHC.IO.Encoding (setLocaleEncoding)
 
 -- | Entrypoint to our application
 main :: IO ()
@@ -44,6 +45,7 @@ main = do
   --  If we have the argument "sanity", immediately exit
   --  If we have no arguments, run the server
   --  Otherwise, error out
+  setLocaleEncoding utf8
   args <- getArgs
   case args of
     ["sanity"] -> putStrLn "Sanity check passed, ready to roll!"
@@ -159,18 +161,18 @@ postApi allHeaders file restUrl fileId = runReq (defaultHttpConfig {httpConfigCh
 download :: Application
 download req send = do
   let headers = requestHeaders req
-      queryParam  = getDownloadQuery $ queryString req
-  case queryParam of 
-    Nothing -> 
+      queryParam = getDownloadQuery $ queryString req
+  case queryParam of
+    Nothing ->
       send $
-            responseLBS
-              HttpTypes.status501
-              [("Content-Type", "application/json; charset=utf-8")]
-              "No ids parameter supplied."
+        responseLBS
+          HttpTypes.status501
+          [("Content-Type", "application/json; charset=utf-8")]
+          "No ids parameter supplied."
     Just param -> do
       restUrl <- getRestUrl
       logStdOut "download"
-      (responseBody, responseStatusCode, responseStatusMessage) <- getApi headers param restUrl
+      (responseBody, responseStatusCode, responseStatusMessage, fileNameHeader) <- getApi headers param restUrl
       case responseStatusCode of
         200 -> do
           let d = (eitherDecode $ L.fromStrict responseBody) :: (Either String [RestResponseFile])
@@ -200,7 +202,7 @@ download req send = do
                   withSystemTempFile "FileFighterFileHandler.zip" $
                     \tmpFileName handle ->
                       do
-                        let nameOfTheFolder = "NameOfTheFolderToDownload.zip"
+                        let nameOfTheFolder = fromMaybe "Files" fileNameHeader
                         let ss =
                               mapM
                                 ( \file -> do
@@ -212,7 +214,7 @@ download req send = do
                         send $
                           responseFile
                             HttpTypes.status200
-                            [ ("Content-Disposition", S8.pack ("attachment; filename=\"" ++ nameOfTheFolder ++ "\"")),
+                            [ ("Content-Disposition", S8.pack ("attachment; filename=\"" ++ S8.unpack nameOfTheFolder ++ ".zip" ++ "\"")),
                               ("Content-Type", "application/zip")
                             ]
                             tmpFileName
@@ -224,18 +226,18 @@ download req send = do
               [("Content-Type", "application/json; charset=utf-8")]
               (L.fromStrict responseBody)
 
-getApi :: [HttpTypes.Header] -> String -> String -> IO (S8.ByteString, Int, S8.ByteString)
+getApi :: [HttpTypes.Header] -> String -> String -> IO (S8.ByteString, Int, S8.ByteString, Maybe S8.ByteString)
 getApi allHeaders param restUrl = runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
   r <-
     req
       GET -- method
-      (http (DataText.pack restUrl) /: "v1"  /: "filesystem" /: "download") -- safe by construction URL
+      (http (DataText.pack restUrl) /: "api" /: "v1" /: "filesystem" /: "download") -- safe by construction URL
       -- (http (DataText.pack restUrl) /:"v1" /: "filesystem" /: DataText.pack  (S8.unpack (getOneHeader allHeaders "X-FF-IDS" )) /: "info")
       NoReqBody -- use built-in options or add your own
       bsResponse -- specify how to interpret response
-      (header "X-FF-IDS" (getOneHeader allHeaders "X-FF-IDS") <> header "Cookie" (getOneHeader allHeaders "Cookie")  <> port 8080 <>  (=:) "ids" param) --PORT !!
+      (header "X-FF-IDS" (getOneHeader allHeaders "X-FF-IDS") <> header "Cookie" (getOneHeader allHeaders "Cookie") <> port 8080 <> (=:) "ids" param) --PORT !!
       -- mempty -- query params, headers, explicit port number, etc.
-  return (responseBody r, responseStatusCode r, responseStatusMessage r)
+  return (responseBody r, responseStatusCode r, responseStatusMessage r, responseHeader r "X-FF-NAME")
 
 delete :: Application
 delete req send = do
@@ -272,7 +274,7 @@ deleteApi allHeaders restUrl fileId = runReq (defaultHttpConfig {httpConfigCheck
   r <-
     req
       DELETE
-      (http (DataText.pack restUrl) /: "api" /: "v1" /: "filesystem" /: DataText.pack fileId /: "delete") 
+      (http (DataText.pack restUrl) /: "api" /: "v1" /: "filesystem" /: DataText.pack fileId /: "delete")
       NoReqBody
       bsResponse
       (header "Authorization" (getOneHeader allHeaders "Authorization") <> port 8080) -- parentID not in Headers
@@ -288,7 +290,7 @@ health req send = do
 
   let response =
         object
-          [ "version" .= ("1.0.0" :: String),
+          [ "version" .= ("0.2.0" :: String),
             "deploymentType" .= deploymentType,
             "actualFilesSize" .= actualFilesSize,
             "fileCount" .= length files
@@ -305,11 +307,9 @@ getOneHeader headers headerName =
     [header] -> snd header
     _ -> ""
 
-getDownloadQuery ::  HttpTypes.Query -> Maybe String
+getDownloadQuery :: HttpTypes.Query -> Maybe String
 getDownloadQuery [(param, Just value)] = if param == "ids" then Just (S8.unpack value) else Nothing
 getDownloadQuery _ = Nothing
-
-
 
 -- needed because buffering is causing problems with docker
 logStdOut :: String -> IO ()
@@ -370,7 +370,7 @@ instance ToJSON User
 
 data RestResponseFile = RestResponseFile
   { fileSystemId :: !Int,
-    name ::  String,
+    name :: String,
     path :: Maybe String,
     size :: Int,
     owner :: User,
