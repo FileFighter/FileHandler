@@ -24,6 +24,10 @@ jobs:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PW }}
       -
+        name: Generate Image Tag from Git Tag
+        id: vars
+        run: echo ::set-output name=tag::${GITHUB_REF#refs/*/}
+      -
         name: Build and push
         run: |
           VERSION=${{ steps.vars.outputs.tag }}
