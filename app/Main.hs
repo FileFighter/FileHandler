@@ -72,6 +72,7 @@ app req send =
     ["data", "upload", id] -> upload req send
     ["data", "download"] -> download req send
     ["data", "delete", id] -> delete req send
+    ["data","preview",id] -> preview req send
     ["data", "health"] -> health req send
     -- anything else: 404
     missingEndpoint ->
@@ -237,7 +238,62 @@ getApi allHeaders param restUrl = runReq (defaultHttpConfig {httpConfigCheckResp
       bsResponse -- specify how to interpret response
       (header "X-FF-IDS" (getOneHeader allHeaders "X-FF-IDS") <> header "Cookie" (getOneHeader allHeaders "Cookie") <> port 8080 <> (=:) "ids" param) --PORT !!
       -- mempty -- query params, headers, explicit port number, etc.
+  liftIO $ logStdOut $ show (getOneHeader allHeaders "Cookie")
   return (responseBody r, responseStatusCode r, responseStatusMessage r, responseHeader r "X-FF-NAME")
+
+
+
+preview :: Application 
+preview req send = do
+  let headers = requestHeaders req
+      id = pathInfo req !! 2
+  restUrl <- getRestUrl
+  (responseBody, responseStatusCode, responseStatusMessage) <- previewApi headers id restUrl
+  case responseStatusCode of
+    200 -> do
+      let decoded = (eitherDecode $ L.fromStrict responseBody) :: (Either String RestResponseFile)
+      case decoded of
+        Left err ->
+          send $ 
+           responseLBS
+              HttpTypes.status500
+              [("Content-Type", "application/json; charset=utf-8")]
+              (encode $ RestApiStatus err "Internal Server Error")
+        Right file -> do 
+            let fileID = fileSystemId file
+                fileMimeType = fromMaybe "application/octet-stream" (mimeType file)
+                path = getPathFromFileId $ show fileID
+            send $
+              responseFile
+                HttpTypes.status200
+                [ ("Content-Type", S8.pack fileMimeType)
+                ]
+                path
+                Nothing
+    _ ->
+      send $
+        responseLBS
+          (HttpTypes.mkStatus responseStatusCode responseStatusMessage)
+          [("Content-Type", "application/json; charset=utf-8")]
+          (L.fromStrict responseBody)
+                 
+
+
+
+previewApi :: [HttpTypes.Header] -> DataText.Text -> String -> IO (S8.ByteString, Int, S8.ByteString)
+previewApi allHeaders id restUrl = runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
+  r <-
+    req
+      GET -- method
+      (http (DataText.pack restUrl) /: "api" /: "v1" /: "filesystem" /:  id /: "info" ) -- safe by construction URL
+      --(http (DataText.pack restUrl) /: "v1" /: "filesystem" /:  id /: "info" ) -- safe by construction URL
+      NoReqBody -- use built-in options or add your own
+      bsResponse -- specify how to interpret response
+      (header "Cookie" (getOneHeader allHeaders "Cookie") <> port 8080) --PORT !!
+      -- mempty -- query params, headers, explicit port number, etc.
+  liftIO $ logStdOut $ show (getOneHeader allHeaders "Cookie")
+  return (responseBody r, responseStatusCode r, responseStatusMessage r)
+  
 
 delete :: Application
 delete req send = do
