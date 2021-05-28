@@ -153,7 +153,7 @@ postApi allHeaders file restUrl fileId = runReq (defaultHttpConfig {httpConfigCh
     req
       POST -- method
       --(http (DataText.pack restUrl) /: "t/os3vu-1615111052/post")
-      (http (DataText.pack restUrl)  /: "v1" /: "filesystem" /: DataText.pack fileId /: "upload")
+      (http (DataText.pack restUrl) /: "api" /: "v1" /: "filesystem" /: DataText.pack fileId /: "upload")
       (ReqBodyJson payload) -- use built-in options or add your own
       bsResponse -- specify how to interpret response
       (header "Authorization" (getOneHeader allHeaders "Authorization") <> port 8080)
@@ -285,7 +285,7 @@ previewApi allHeaders id restUrl = runReq (defaultHttpConfig {httpConfigCheckRes
   r <-
     req
       GET -- method
-      (http (DataText.pack restUrl)  /: "v1" /: "filesystem" /:  id /: "info" ) -- safe by construction URL
+      (http (DataText.pack restUrl) /: "api" /: "v1" /: "filesystem" /:  id /: "info" ) -- safe by construction URL
       --(http (DataText.pack restUrl) /: "v1" /: "filesystem" /:  id /: "info" ) -- safe by construction URL
       NoReqBody -- use built-in options or add your own
       bsResponse -- specify how to interpret response
