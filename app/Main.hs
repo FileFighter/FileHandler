@@ -73,6 +73,7 @@ app req send =
     ["data", "download"] -> download req send
     ["data", "delete", id] -> delete req send
     ["data","preview",id] -> preview req send
+    ["data","preview",id,_] -> preview req send
     ["data", "health"] -> health req send
     -- anything else: 404
     missingEndpoint ->
