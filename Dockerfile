@@ -1,4 +1,4 @@
-FROM ubuntu:latest
+FROM ubuntu:20.10
 
 ARG BINLOCATION
 ENV RESTURL=FileFighterREST
