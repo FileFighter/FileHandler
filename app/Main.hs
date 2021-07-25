@@ -1,7 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 module Main where
 
@@ -39,12 +38,9 @@ import System.IO.Temp
 main :: IO ()
 main = do
   -- For ease of setup, we want to have a "sanity" command line
-  -- argument. We'll see how this is used in the Dockerfile
-  -- later. Desired behavior:
+  -- argument.
   --
   --  If we have the argument "sanity", immediately exit
-  --  If we have no arguments, run the server
-  --  Otherwise, error out
   setLocaleEncoding utf8
   args <- getArgs
   case args of
@@ -54,7 +50,7 @@ main = do
       -- Run our application (defined below) on port 5000 with cors enabled
       run 5000 $ cors (const devCorsPolicy) app
     [restUrl, "stage"] -> do
-      logStdOut "Launching DataHandler with dev profile"
+      logStdOut "Launching DataHandler with stage profile"
       -- Run our application (defined below) on port 5000 with cors enabled
       run 5000 $ cors (const devCorsPolicy) app
     [restUrl, "prod"] -> do
@@ -200,7 +196,7 @@ download req send = do
                       ]
                       path
                       Nothing
-                xs ->
+                files ->
                   withSystemTempFile "FileFighterFileHandler.zip" $
                     \tmpFileName handle ->
                       do
@@ -208,10 +204,10 @@ download req send = do
                         let ss =
                               mapM
                                 ( \file -> do
-                                    inZipPath <- mkEntrySelector $ fromMaybe (name file) (path file)
-                                    loadEntry Store inZipPath (getPathFromFileId (show $ fileSystemId file))
+                                    inZipPath <- mkEntrySelector $ fromMaybe (name file) (path file) -- either take the filename or path
+                                    loadEntry Deflate inZipPath (getPathFromFileId (show $ fileSystemId file))
                                 )
-                                xs
+                                files
                         createArchive tmpFileName ss
                         send $
                           responseFile
@@ -269,6 +265,9 @@ preview req send = do
               ]
               path
               Nothing
+    400 -> do
+      let location = getOneHeader headers "Referer"
+      send $ responseLBS HttpTypes.status303 [("Location", location)] ""
     _ ->
       send $
         responseLBS
