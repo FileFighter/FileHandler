@@ -217,6 +217,9 @@ download req send = do
                             ]
                             tmpFileName
                             Nothing
+        400 ->
+          let location = "/error?dest=" <> HttpTypes.urlEncode True (rawPathInfo req) <> "&message=" <> HttpTypes.urlEncode True responseStatusMessage
+           in send $ responseLBS HttpTypes.status303 [("Location", location)] ""
         _ ->
           send $
             responseLBS
@@ -254,20 +257,19 @@ preview req send = do
               HttpTypes.status500
               [("Content-Type", "application/json; charset=utf-8")]
               (encode $ RestApiStatus err "Internal Server Error")
-        Right file -> do
+        Right file ->
           let fileID = fileSystemId file
               fileMimeType = fromMaybe "application/octet-stream" (mimeType file)
               path = getPathFromFileId $ show fileID
-          send $
-            responseFile
-              HttpTypes.status200
-              [ ("Content-Type", S8.pack fileMimeType)
-              ]
-              path
-              Nothing
-    400 -> do
-      let location = getOneHeader headers "Referer"
-      send $ responseLBS HttpTypes.status303 [("Location", location)] ""
+           in send $
+                responseFile
+                  HttpTypes.status200
+                  [("Content-Type", S8.pack fileMimeType)]
+                  path
+                  Nothing
+    401 ->
+      let location = "/error?dest=" <> HttpTypes.urlEncode True (rawPathInfo req) <> "&message=" <> HttpTypes.urlEncode True responseStatusMessage
+       in send $ responseLBS HttpTypes.status303 [("Location", location)] ""
     _ ->
       send $
         responseLBS
