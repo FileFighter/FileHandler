@@ -217,6 +217,10 @@ download req send = do
                             ]
                             tmpFileName
                             Nothing
+        400 ->
+          -- missing the query params
+          let location = "/error?dest=" <> HttpTypes.urlEncode True (rawPathInfo req) <> "&message=" <> HttpTypes.urlEncode True responseStatusMessage
+           in send $ responseLBS HttpTypes.status303 [("Location", location)] ""
         401 ->
           let location = "/error?dest=" <> HttpTypes.urlEncode True (rawPathInfo req) <> "&message=" <> HttpTypes.urlEncode True responseStatusMessage
            in send $ responseLBS HttpTypes.status303 [("Location", location)] ""
@@ -267,6 +271,9 @@ preview req send = do
                   [("Content-Type", S8.pack fileMimeType)]
                   path
                   Nothing
+    400 ->
+      let location = "/error?dest=" <> HttpTypes.urlEncode True (rawPathInfo req) <> "&message=" <> HttpTypes.urlEncode True responseStatusMessage
+       in send $ responseLBS HttpTypes.status303 [("Location", location)] ""
     401 ->
       let location = "/error?dest=" <> HttpTypes.urlEncode True (rawPathInfo req) <> "&message=" <> HttpTypes.urlEncode True responseStatusMessage
        in send $ responseLBS HttpTypes.status303 [("Location", location)] ""
