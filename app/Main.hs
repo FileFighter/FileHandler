@@ -217,7 +217,7 @@ download req send = do
                             ]
                             tmpFileName
                             Nothing
-        400 ->
+        401 ->
           let location = "/error?dest=" <> HttpTypes.urlEncode True (rawPathInfo req) <> "&message=" <> HttpTypes.urlEncode True responseStatusMessage
            in send $ responseLBS HttpTypes.status303 [("Location", location)] ""
         _ ->
@@ -340,7 +340,7 @@ health req send = do
 
   let response =
         object
-          [ "version" .= ("0.2.0" :: String),
+          [ "version" .= ("0.2.1" :: String),
             "deploymentType" .= deploymentType,
             "actualFilesSize" .= actualFilesSize,
             "fileCount" .= length files
