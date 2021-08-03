@@ -160,6 +160,7 @@ download :: Application
 download req send = do
   let headers = requestHeaders req
       queryParam = getDownloadQuery $ queryString req
+      redirectOnError = True --todo: make this a query param or something
   case queryParam of
     Nothing ->
       send $
@@ -171,8 +172,8 @@ download req send = do
       restUrl <- getRestUrl
       logStdOut "download"
       (responseBody, responseStatusCode, responseStatusMessage, fileNameHeader) <- getApi headers param restUrl
-      case responseStatusCode of
-        200 -> do
+      case (responseStatusCode, redirectOnError) of
+        (200, _) -> do
           let d = (eitherDecode $ L.fromStrict responseBody) :: (Either String [RestResponseFile])
           case d of
             Left err ->
@@ -217,14 +218,24 @@ download req send = do
                             ]
                             tmpFileName
                             Nothing
-        400 ->
-          -- missing the query params
-          let location = "/error?dest=" <> HttpTypes.urlEncode True (rawPathInfo req) <> "&message=" <> HttpTypes.urlEncode True responseStatusMessage
-           in send $ responseLBS HttpTypes.status303 [("Location", location)] ""
-        401 ->
-          let location = "/error?dest=" <> HttpTypes.urlEncode True (rawPathInfo req) <> "&message=" <> HttpTypes.urlEncode True responseStatusMessage
-           in send $ responseLBS HttpTypes.status303 [("Location", location)] ""
-        _ ->
+        (_, True) -> do
+          let decoded = (eitherDecode $ L.fromStrict responseBody) :: (Either String RestApiStatus)
+          case decoded of
+            Left err ->
+              send $
+                responseLBS
+                  HttpTypes.status500
+                  [("Content-Type", "application/json; charset=utf-8")]
+                  (encode $ RestApiStatus err "Internal Server Error")
+            Right status ->
+              let location =
+                    "/error?dest="
+                      <> HttpTypes.urlEncode True (rawPathInfo req)
+                      <> HttpTypes.urlEncode True (rawQueryString req)
+                      <> "&message="
+                      <> HttpTypes.urlEncode True (S8.pack $ message status)
+               in send $ responseLBS HttpTypes.status303 [("Location", location)] ""
+        (_, False) ->
           send $
             responseLBS
               (HttpTypes.mkStatus responseStatusCode responseStatusMessage)
@@ -249,10 +260,12 @@ preview :: Application
 preview req send = do
   let headers = requestHeaders req
       id = pathInfo req !! 2
+      redirectOnError = True --todo: make this a query param or something
   restUrl <- getRestUrl
   (responseBody, responseStatusCode, responseStatusMessage) <- previewApi headers id restUrl
-  case responseStatusCode of
-    200 -> do
+  logStdOut $ S8.unpack responseStatusMessage
+  case (responseStatusCode, redirectOnError) of
+    (200, _) -> do
       let decoded = (eitherDecode $ L.fromStrict responseBody) :: (Either String RestResponseFile)
       case decoded of
         Left err ->
@@ -271,13 +284,22 @@ preview req send = do
                   [("Content-Type", S8.pack fileMimeType)]
                   path
                   Nothing
-    400 ->
-      let location = "/error?dest=" <> HttpTypes.urlEncode True (rawPathInfo req) <> "&message=" <> HttpTypes.urlEncode True responseStatusMessage
-       in send $ responseLBS HttpTypes.status303 [("Location", location)] ""
-    401 ->
-      let location = "/error?dest=" <> HttpTypes.urlEncode True (rawPathInfo req) <> "&message=" <> HttpTypes.urlEncode True responseStatusMessage
-       in send $ responseLBS HttpTypes.status303 [("Location", location)] ""
-    _ ->
+    (_, True) -> do
+      let decoded = (eitherDecode $ L.fromStrict responseBody) :: (Either String RestApiStatus)
+      case decoded of
+        Left err ->
+          send $
+            responseLBS
+              HttpTypes.status500
+              [("Content-Type", "application/json; charset=utf-8")]
+              (encode $ RestApiStatus err "Internal Server Error")
+        Right status ->
+          let location =
+                "/error?dest=" <> HttpTypes.urlEncode True (rawPathInfo req)
+                  <> "&message="
+                  <> HttpTypes.urlEncode True (S8.pack $ message status)
+           in send $ responseLBS HttpTypes.status303 [("Location", location)] ""
+    (_, False) ->
       send $
         responseLBS
           (HttpTypes.mkStatus responseStatusCode responseStatusMessage)
@@ -295,7 +317,7 @@ previewApi allHeaders id restUrl = runReq (defaultHttpConfig {httpConfigCheckRes
       bsResponse -- specify how to interpret response
       (header "Cookie" (getOneHeader allHeaders "Cookie") <> port 8080) --PORT !!
       -- mempty -- query params, headers, explicit port number, etc.
-  liftIO $ logStdOut $ show (getOneHeader allHeaders "Cookie")
+  liftIO $ logStdOut "Requested fileinfo"
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
 delete :: Application
