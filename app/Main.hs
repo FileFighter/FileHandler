@@ -1,7 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 module Main where
 
@@ -19,6 +18,7 @@ import Data.Functor.Identity
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as DataText
 import GHC.Generics
+import GHC.IO.Encoding (setLocaleEncoding)
 import GHC.Int
 import Lib
 import Network.HTTP.Req
@@ -33,18 +33,14 @@ import System.Environment
 import System.FilePath
 import System.IO
 import System.IO.Temp
-import GHC.IO.Encoding (setLocaleEncoding)
 
 -- | Entrypoint to our application
 main :: IO ()
 main = do
   -- For ease of setup, we want to have a "sanity" command line
-  -- argument. We'll see how this is used in the Dockerfile
-  -- later. Desired behavior:
+  -- argument.
   --
   --  If we have the argument "sanity", immediately exit
-  --  If we have no arguments, run the server
-  --  Otherwise, error out
   setLocaleEncoding utf8
   args <- getArgs
   case args of
@@ -54,7 +50,7 @@ main = do
       -- Run our application (defined below) on port 5000 with cors enabled
       run 5000 $ cors (const devCorsPolicy) app
     [restUrl, "stage"] -> do
-      logStdOut "Launching DataHandler with dev profile"
+      logStdOut "Launching DataHandler with stage profile"
       -- Run our application (defined below) on port 5000 with cors enabled
       run 5000 $ cors (const devCorsPolicy) app
     [restUrl, "prod"] -> do
@@ -72,8 +68,8 @@ app req send =
     ["data", "upload", id] -> upload req send
     ["data", "download"] -> download req send
     ["data", "delete", id] -> delete req send
-    ["data","preview",id] -> preview req send
-    ["data","preview",id,_] -> preview req send
+    ["data", "preview", id] -> preview req send
+    ["data", "preview", id, _] -> preview req send
     ["data", "health"] -> health req send
     -- anything else: 404
     missingEndpoint ->
@@ -164,6 +160,7 @@ download :: Application
 download req send = do
   let headers = requestHeaders req
       queryParam = getDownloadQuery $ queryString req
+      redirectOnError = True --todo: make this a query param or something
   case queryParam of
     Nothing ->
       send $
@@ -175,8 +172,8 @@ download req send = do
       restUrl <- getRestUrl
       logStdOut "download"
       (responseBody, responseStatusCode, responseStatusMessage, fileNameHeader) <- getApi headers param restUrl
-      case responseStatusCode of
-        200 -> do
+      case (responseStatusCode, redirectOnError) of
+        (200, _) -> do
           let d = (eitherDecode $ L.fromStrict responseBody) :: (Either String [RestResponseFile])
           case d of
             Left err ->
@@ -200,7 +197,7 @@ download req send = do
                       ]
                       path
                       Nothing
-                xs ->
+                files ->
                   withSystemTempFile "FileFighterFileHandler.zip" $
                     \tmpFileName handle ->
                       do
@@ -208,10 +205,10 @@ download req send = do
                         let ss =
                               mapM
                                 ( \file -> do
-                                    inZipPath <- mkEntrySelector $ fromMaybe (name file) (path file)
-                                    loadEntry Store inZipPath (getPathFromFileId (show $ fileSystemId file))
+                                    inZipPath <- mkEntrySelector $ fromMaybe (name file) (path file) -- either take the filename or path
+                                    loadEntry Deflate inZipPath (getPathFromFileId (show $ fileSystemId file))
                                 )
-                                xs
+                                files
                         createArchive tmpFileName ss
                         send $
                           responseFile
@@ -221,7 +218,24 @@ download req send = do
                             ]
                             tmpFileName
                             Nothing
-        _ ->
+        (_, True) -> do
+          let decoded = (eitherDecode $ L.fromStrict responseBody) :: (Either String RestApiStatus)
+          case decoded of
+            Left err ->
+              send $
+                responseLBS
+                  HttpTypes.status500
+                  [("Content-Type", "application/json; charset=utf-8")]
+                  (encode $ RestApiStatus err "Internal Server Error")
+            Right status ->
+              let location =
+                    "/error?dest="
+                      <> HttpTypes.urlEncode True (rawPathInfo req)
+                      <> HttpTypes.urlEncode True (rawQueryString req)
+                      <> "&message="
+                      <> HttpTypes.urlEncode True (S8.pack $ message status)
+               in send $ responseLBS HttpTypes.status303 [("Location", location)] ""
+        (_, False) ->
           send $
             responseLBS
               (HttpTypes.mkStatus responseStatusCode responseStatusMessage)
@@ -242,59 +256,69 @@ getApi allHeaders param restUrl = runReq (defaultHttpConfig {httpConfigCheckResp
   liftIO $ logStdOut $ show (getOneHeader allHeaders "Cookie")
   return (responseBody r, responseStatusCode r, responseStatusMessage r, responseHeader r "X-FF-NAME")
 
-
-
-preview :: Application 
+preview :: Application
 preview req send = do
   let headers = requestHeaders req
       id = pathInfo req !! 2
+      redirectOnError = True --todo: make this a query param or something
   restUrl <- getRestUrl
   (responseBody, responseStatusCode, responseStatusMessage) <- previewApi headers id restUrl
-  case responseStatusCode of
-    200 -> do
+  logStdOut $ S8.unpack responseStatusMessage
+  case (responseStatusCode, redirectOnError) of
+    (200, _) -> do
       let decoded = (eitherDecode $ L.fromStrict responseBody) :: (Either String RestResponseFile)
       case decoded of
         Left err ->
-          send $ 
-           responseLBS
+          send $
+            responseLBS
               HttpTypes.status500
               [("Content-Type", "application/json; charset=utf-8")]
               (encode $ RestApiStatus err "Internal Server Error")
-        Right file -> do 
-            let fileID = fileSystemId file
-                fileMimeType = fromMaybe "application/octet-stream" (mimeType file)
-                path = getPathFromFileId $ show fileID
-            send $
-              responseFile
-                HttpTypes.status200
-                [ ("Content-Type", S8.pack fileMimeType)
-                ]
-                path
-                Nothing
-    _ ->
+        Right file ->
+          let fileID = fileSystemId file
+              fileMimeType = fromMaybe "application/octet-stream" (mimeType file)
+              path = getPathFromFileId $ show fileID
+           in send $
+                responseFile
+                  HttpTypes.status200
+                  [("Content-Type", S8.pack fileMimeType)]
+                  path
+                  Nothing
+    (_, True) -> do
+      let decoded = (eitherDecode $ L.fromStrict responseBody) :: (Either String RestApiStatus)
+      case decoded of
+        Left err ->
+          send $
+            responseLBS
+              HttpTypes.status500
+              [("Content-Type", "application/json; charset=utf-8")]
+              (encode $ RestApiStatus err "Internal Server Error")
+        Right status ->
+          let location =
+                "/error?dest=" <> HttpTypes.urlEncode True (rawPathInfo req)
+                  <> "&message="
+                  <> HttpTypes.urlEncode True (S8.pack $ message status)
+           in send $ responseLBS HttpTypes.status303 [("Location", location)] ""
+    (_, False) ->
       send $
         responseLBS
           (HttpTypes.mkStatus responseStatusCode responseStatusMessage)
           [("Content-Type", "application/json; charset=utf-8")]
           (L.fromStrict responseBody)
-                 
-
-
 
 previewApi :: [HttpTypes.Header] -> DataText.Text -> String -> IO (S8.ByteString, Int, S8.ByteString)
 previewApi allHeaders id restUrl = runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
   r <-
     req
       GET -- method
-      (http (DataText.pack restUrl) /: "api" /: "v1" /: "filesystem" /:  id /: "info" ) -- safe by construction URL
+      (http (DataText.pack restUrl) /: "api" /: "v1" /: "filesystem" /: id /: "info") -- safe by construction URL
       --(http (DataText.pack restUrl) /: "v1" /: "filesystem" /:  id /: "info" ) -- safe by construction URL
       NoReqBody -- use built-in options or add your own
       bsResponse -- specify how to interpret response
       (header "Cookie" (getOneHeader allHeaders "Cookie") <> port 8080) --PORT !!
       -- mempty -- query params, headers, explicit port number, etc.
-  liftIO $ logStdOut $ show (getOneHeader allHeaders "Cookie")
+  liftIO $ logStdOut "Requested fileinfo"
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
-  
 
 delete :: Application
 delete req send = do
@@ -340,14 +364,12 @@ deleteApi allHeaders restUrl fileId = runReq (defaultHttpConfig {httpConfigCheck
 health :: Application
 health req send = do
   deploymentType <- getDeploymentType
-  foldersIO <- fmap (filterM doesDirectoryExist) (listDirectory ".")
-  folders <- foldersIO
-  files <- concat <$> mapM listDirectoryRelative folders
+  files <- concat <$> (mapM listDirectoryRelative =<< (filterM doesDirectoryExist =<< listDirectory "."))
   actualFilesSize <- sum <$> mapM getFileSize files
 
   let response =
         object
-          [ "version" .= ("0.2.0" :: String),
+          [ "version" .= ("0.2.1" :: String),
             "deploymentType" .= deploymentType,
             "actualFilesSize" .= actualFilesSize,
             "fileCount" .= length files
