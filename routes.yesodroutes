@@ -1,0 +1,6 @@
+/              HomeR GET
+/data/download DownloadR GET
+/data/upload UploadR POST
+/data/delete/#Int DeleteR DELETE
+/data/preview/#Int PreviewR GET
+/data/health HealthR GET
