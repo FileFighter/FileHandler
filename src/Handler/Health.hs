@@ -1,32 +1,38 @@
--- |
 {-# LANGUAGE OverloadedStrings #-}
 
+-- |
 module Handler.Health where
 
+import Control.Monad
+import Data.Aeson
 import Foundation
-import Yesod.Core
 import qualified Network.HTTP.Types as HttpTypes
 import Network.Wai
-import Data.Aeson
-import System.Environment
 import System.Directory
+import System.Environment
 import System.FilePath
-import Control.Monad
+import Yesod.Core
 
-getHealthR :: Handler Value
+data HealthInfo = HealthInfo
+  { version :: String,
+    deploymentType :: String,
+    actualFilesSize :: Integer,
+    fileCount :: Int
+  }
+
+getHealthR :: Handler HealthInfo
 getHealthR = do
   deploymentType <- liftIO getDeploymentType
   files <- liftIO $ concat <$> (mapM listDirectoryRelative =<< (filterM doesDirectoryExist =<< listDirectory "."))
   actualFilesSize <- liftIO $ sum <$> mapM getFileSize files
   let response =
-        object
-          [ "version" .= ("0.2.1" :: String),
-            "deploymentType" .= deploymentType,
-            "actualFilesSize" .= actualFilesSize,
-            "fileCount" .= length files
-          ]
+        HealthInfo
+          { version = "0.2.1" :: String,
+            deploymentType = deploymentType,
+            actualFilesSize = actualFilesSize,
+            fileCount = length files
+          }
   return response
-
 
 getDeploymentType :: IO String
 getDeploymentType = head . tail <$> getArgs
