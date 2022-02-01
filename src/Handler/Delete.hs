@@ -1,14 +1,10 @@
 -- |
-
 {-# LANGUAGE OverloadedStrings #-}
 module Handler.Delete where
 import Foundation
 import Yesod.Core
 
 
-import qualified Data.ByteString.Char8 as S8
-import qualified Data.ByteString.Lazy as L
-import qualified Network.HTTP.Types as HttpTypes
 import qualified Data.Text as DataText
 import Data.Aeson
 import Data.Maybe (fromMaybe)
@@ -20,52 +16,32 @@ import Utils.FileUtils
 import Logger
 import Models.RestApiStatus
 import System.Directory
+import FileSystemServiceClient.FileSystemServiceClient
+import Network.HTTP.Types
+import Data.ByteString
 
 
 
-deleteDeleteR :: Int -> Handler ()
-deleteDeleteR  _ =
-  sendWaiApplication delete
-delete :: Application
-delete req send = do
-  logStdOut "requesting delete"
-  let headers = requestHeaders req
-  restUrl <- getRestUrl
-  (responseBody, responseStatusCode, responseStatusMessage) <- deleteApi headers restUrl (DataText.unpack $ pathInfo req !! 2)
-  case responseStatusCode of
-    200 -> do
-      let d = (eitherDecode $ L.fromStrict responseBody) :: (Either String [Inode])
-      case d of
-        Left err ->
-          send $
-            responseLBS
-              HttpTypes.status500
-              [("Content-Type", "application/json; charset=utf-8")]
-              (encode $ RestApiStatus err "Internal Server Error")
-        Right fileObjects -> do
-          mapM_ deleteFile (filter filterFiles fileObjects)
-          send $
-            responseLBS
-              HttpTypes.status200
-              [("Content-Type", "application/json; charset=utf-8")]
-              (L.fromStrict responseBody)
-    _ ->
-      send $
-        responseLBS
-          (HttpTypes.mkStatus responseStatusCode responseStatusMessage)
-          [("Content-Type", "application/json; charset=utf-8")]
-          (L.fromStrict responseBody)
+serverPort = port 80
 
-deleteApi :: [HttpTypes.Header] -> String -> String -> IO (S8.ByteString, Int, S8.ByteString)
-deleteApi allHeaders restUrl fileId = runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
-  r <-
-    req
-      DELETE
-      (http (DataText.pack restUrl) /: "api" /: "v1" /: "filesystem" /: DataText.pack fileId /: "delete")
-      NoReqBody
-      bsResponse
-      (header "Authorization" (getOneHeader allHeaders "Authorization") <> port 8080) -- parentID not in Headers
-  return (responseBody r, responseStatusCode r, responseStatusMessage r)
+deleteDeleteR :: Int -> Handler Value
+deleteDeleteR  inodeId = do
+  App{fileSystemServiceClient = FileSystemServiceClient{deleteInode= deleteInode}} <- getYesod
+  authToken  <- lookupBearerAuth
+  case authToken of
+    Nothing -> notAuthenticated
+    Just bearerToken -> do
+      (responseBody, responseStatusCode, responseStatusMessage) <- liftIO $ deleteInode  bearerToken (show inodeId)
+      case responseStatusCode of
+        200 -> do
+          case fromJSON responseBody of
+            Success inodes ->  do
+              liftIO $ mapM_ deleteFile (Prelude.filter filterFiles inodes) -- Todo: check if file exists
+              return responseBody
+            Error _ -> sendResponseStatus (Status 500 "Internal Server Error.") $ toJSON $ RestApiStatus "Internal Server Error" "500"
+        _ -> sendResponseStatus (Status responseStatusCode responseStatusMessage) responseBody
+
+
 
 deleteFile :: Inode -> IO ()
 deleteFile file = removeFile $ getPathFromFileId (show $ fileSystemId file)

@@ -1,6 +1,5 @@
-import Application () -- for YesodDispatch instance
 import Foundation
-import Yesod.Core
+import Application (appMain)
 
 main :: IO ()
-main = warp 3000 App
+main = appMain

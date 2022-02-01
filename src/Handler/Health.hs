@@ -1,41 +1,46 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 -- |
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DeriveGeneric #-}
+
 module Handler.Health where
 
-import Control.Monad
-import Data.Aeson
 import Foundation
+import Yesod.Core
 import qualified Network.HTTP.Types as HttpTypes
 import Network.Wai
-import System.Directory
+import Data.Aeson
 import System.Environment
+import System.Directory
 import System.FilePath
-import Yesod.Core
+import Control.Monad
+import GHC.Generics
+import Settings (AppSettings(AppSettings), appProfile)
 
-data HealthInfo = HealthInfo
-  { version :: String,
-    deploymentType :: String,
-    actualFilesSize :: Integer,
-    fileCount :: Int
+
+data HealthInfo =HealthInfo
+  { version :: String
+  , deploymentType :: String
+  , actualFilesSize :: Integer
+  , fileCount :: Int
   }
+  deriving (Show, Generic)
 
-getHealthR :: Handler HealthInfo
+instance ToJSON  HealthInfo
+
+getHealthR :: Handler Value
 getHealthR = do
-  deploymentType <- liftIO getDeploymentType
+  App{appSettings = AppSettings {appProfile = deploymentType}} <- getYesod
   files <- liftIO $ concat <$> (mapM listDirectoryRelative =<< (filterM doesDirectoryExist =<< listDirectory "."))
   actualFilesSize <- liftIO $ sum <$> mapM getFileSize files
   let response =
         HealthInfo
-          { version = "0.2.1" :: String,
-            deploymentType = deploymentType,
-            actualFilesSize = actualFilesSize,
-            fileCount = length files
+          { version = "0.2.1" :: String
+          ,   deploymentType = deploymentType
+          ,  actualFilesSize = actualFilesSize
+          ,  fileCount = length files
           }
-  return response
+  returnJson response
 
-getDeploymentType :: IO String
-getDeploymentType = head . tail <$> getArgs
 
 listDirectoryRelative :: FilePath -> IO [FilePath]
 listDirectoryRelative x = Prelude.map (x </>) <$> listDirectory x

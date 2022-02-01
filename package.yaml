@@ -3,12 +3,17 @@ version: "0.1.0"
 
 dependencies:
 - base
+- yesod
 - yesod-core
+- classy-prelude >=1.5 && <1.6
+- classy-prelude-conduit >=1.5 && <1.6
+- classy-prelude-yesod >=1.5 && <1.6
 - http-types
 - bytestring
 - aeson
 - wai
 - wai-extra
+- warp
 - text
 - req
 - zip
@@ -18,6 +23,9 @@ dependencies:
 - mtl
 - directory
 - filepath
+- yaml
+- file-embed
+
 
 
 # The library contains all of our application code. The executable
