@@ -19,6 +19,7 @@ import System.Directory
 import FileSystemServiceClient.FileSystemServiceClient
 import Network.HTTP.Types
 import Data.ByteString
+import Utils.ResponeUtils (sendInternalError)
 
 
 
@@ -38,7 +39,7 @@ deleteDeleteR  inodeId = do
             Success inodes ->  do
               liftIO $ mapM_ deleteFile (Prelude.filter filterFiles inodes) -- Todo: check if file exists
               return responseBody
-            Error _ -> sendResponseStatus (Status 500 "Internal Server Error.") $ toJSON $ RestApiStatus "Internal Server Error" "500"
+            Error _ -> sendInternalError
         _ -> sendResponseStatus (Status responseStatusCode responseStatusMessage) responseBody
 
 
