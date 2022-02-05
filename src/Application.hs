@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Application where
 
@@ -14,6 +13,7 @@ import Handler.Health
 import Handler.Home
 import Handler.Preview
 import Handler.Upload
+import Handler.Error
 import Settings
 import Yesod.Core
 

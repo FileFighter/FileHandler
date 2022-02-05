@@ -1,10 +1,9 @@
 {-# LANGUAGE DeriveGeneric #-}
-module Models.Inode where
 
+module Models.Inode where
 
 import Data.Aeson
 import GHC.Generics
-
 import Models.User
 
 data Inode = Inode

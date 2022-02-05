@@ -16,13 +16,13 @@ import GHC.Generics
 import Network.HTTP.Req hiding (port)
 import qualified Network.HTTP.Req as Req
 import Settings
-import Utils.RequestUtils
+import ClassyPrelude hiding (pack, encodeUtf8)
 
 data FileSystemServiceClient = FileSystemServiceClient
   { deleteInode :: Text -> String -> IO (Value, Int, ByteString),
     createInode :: Text -> UploadedInode -> String -> IO (Value, Int, ByteString),
     getInodeInfo ::Text -> String -> IO (Value, Int, ByteString),
-    downloadInode :: ()
+    getInodeContent ::  Text -> String -> IO (Value, Int, ByteString, Maybe ByteString)
   }
 
 data UploadedInode = UploadedInode
@@ -35,13 +35,16 @@ data UploadedInode = UploadedInode
 
 instance ToJSON UploadedInode
 
+httpConfigDontCheckResponse :: p1 -> p2 -> p3 -> Maybe a
+httpConfigDontCheckResponse _ _ _ = Nothing
+
 makeFileSystemServiceClient :: FileSystemServiceSettings -> FileSystemServiceClient
 makeFileSystemServiceClient fileSystemServiceSettings =
   FileSystemServiceClient
     { deleteInode = makeDeleteInode fileSystemServiceSettings,
       createInode = makeCreateInode fileSystemServiceSettings,
       getInodeInfo = makeGetInodeInfo fileSystemServiceSettings,
-      downloadInode = ()
+      getInodeContent  = makeGetInodeContent fileSystemServiceSettings
     }
 
 makeDeleteInode :: FileSystemServiceSettings -> Text -> String -> IO (Value, Int, ByteString)
@@ -81,3 +84,20 @@ makeGetInodeInfo r@FileSystemServiceSettings {url = url, port = port} authorizat
       (oAuth2Bearer' (encodeUtf8 authorization) <> Req.port port)
       -- mempty -- query params, headers, explicit port number, etc.
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
+
+makeGetInodeContent :: FileSystemServiceSettings ->  Text -> String -> IO (Value, Int, ByteString, Maybe ByteString)
+makeGetInodeContent r@FileSystemServiceSettings {url = url, port = port} authorization ids = runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
+  r <-
+    req
+      GET -- method
+      (http (pack url) /:  "v1" /: "filesystem" /: "download") -- safe by construction URL
+      -- (http (DataText.pack restUrl) /:"v1" /: "filesystem" /: DataText.pack  (S8.unpack (getOneHeader allHeaders "X-FF-IDS" )) /: "info")
+      NoReqBody -- use built-in options or add your own
+      jsonResponse -- specify how to interpret response
+      (oAuth2Bearer' (encodeUtf8 authorization)
+       <> Req.port port
+       <> header "X-FF-IDS" (fromString ids)
+       <> header "Cookie"  ("token=" <> encodeUtf8 authorization)
+       <> (=:) "ids" ids )
+      -- mempty -- query params, headers, explicit port number, etc.
+  return (responseBody r, responseStatusCode r, responseStatusMessage r, responseHeader r "X-FF-NAME")

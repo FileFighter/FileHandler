@@ -25,6 +25,8 @@ dependencies:
 - filepath
 - yaml
 - file-embed
+- zip-stream
+- time
 
 
 

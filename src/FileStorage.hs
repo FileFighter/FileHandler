@@ -6,7 +6,7 @@ import Data.ByteString
 import Models.Inode
 import ClassyPrelude.Yesod
 import System.Directory
-import qualified Data.Conduit.Binary as CB
+import Data.Time
 
 
 
@@ -20,7 +20,12 @@ storeFile inode = do
 retrieveFile :: MonadResource m => Inode ->ConduitT i ByteString m ()
 retrieveFile inode= do
   let id = show $ fileSystemId inode
-  CB.sourceFile (getPathFromFileId id)
+  sourceFile (getPathFromFileId id)
 
 getPathFromFileId :: String -> String
 getPathFromFileId id=Prelude.head id :  ("/" Prelude.++id)
+
+getInodeModifcationTime :: Inode -> IO UTCTime
+getInodeModifcationTime inode =  do
+  let id = show $ fileSystemId inode
+  getModificationTime (getPathFromFileId id)

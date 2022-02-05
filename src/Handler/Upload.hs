@@ -27,7 +27,6 @@ import Foundation (App (App, fileSystemServiceClient), Handler)
 import Models.Inode (Inode (fileSystemId))
 import Network.HTTP.Types (Status (Status))
 import Utils.FileUtils (filterFiles)
-import Utils.ResponeUtils (sendInternalError)
 import Yesod.Core
   ( FileInfo,
     MonadHandler,
@@ -42,6 +41,7 @@ import Yesod.Core
     sendResponseStatus,
   )
 import Yesod.Core.Handler (sendResponseCreated)
+import Utils.HandlerUtils
 
 postUploadR :: Int -> Handler Value
 postUploadR parentId = do

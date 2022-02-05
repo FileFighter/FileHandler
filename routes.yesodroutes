@@ -2,5 +2,6 @@
 /data/download DownloadR GET
 /data/upload/#Int UploadR POST
 /data/delete/#Int DeleteR DELETE
-/data/preview/#Int PreviewR GET
+/data/preview/#Int/#String PreviewR GET
 /data/health HealthR GET
+/error ErrorR GET
