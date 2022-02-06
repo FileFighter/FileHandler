@@ -46,15 +46,7 @@ import ClassyPrelude.Yesod
     yield,
     (.|),
   )
-import Codec.Archive.Zip.Conduit.Zip
-  ( ZipData (ZipDataSource),
-    ZipEntry (..),
-    ZipInfo (ZipInfo, zipComment),
-    ZipOptions (..),
-    zipStream,
-  )
 import qualified Data.ByteString.Char8 as S8
-import Data.Time (TimeZone, getCurrentTimeZone, utcToLocalTime)
 import FileStorage (getInodeModifcationTime, retrieveFile)
 import FileSystemServiceClient.FileSystemServiceClient
   ( FileSystemServiceClient
@@ -64,16 +56,18 @@ import FileSystemServiceClient.FileSystemServiceClient
   )
 import Foundation (App (App, fileSystemServiceClient), Handler)
 import Models.Inode
-    ( Inode(lastUpdated, mimeType, name, size,path) )
+  ( Inode (lastUpdated, mimeType, name, path, size),
+  )
 import qualified Network.HTTP.Types as HttpTypes
 import System.Directory (doesDirectoryExist, removeFile)
 import System.IO.Temp (emptySystemTempFile)
 import UnliftIO.Resource (allocate)
 import Utils.HandlerUtils (handleApiCall, lookupAuth)
+import Utils.ZipFile
 
-getDownloadR :: Handler ClassyPrelude.Yesod.TypedContent
+getDownloadR :: Handler TypedContent
 getDownloadR = do
-  App {fileSystemServiceClient = FileSystemServiceClient {getInodeContent = getInodeContent}} <- ClassyPrelude.Yesod.getYesod
+  App {fileSystemServiceClient = FileSystemServiceClient {getInodeContent = getInodeContent}} <- getYesod
   bearerToken <- lookupAuth
 
   inodeIds <- lookupRequiredInodeIds
@@ -81,14 +75,14 @@ getDownloadR = do
   inodes <- handleApiCall responseBody responseStatusCode responseStatusMessage
   case inodes of
     [singleInode] -> do
-      ClassyPrelude.Yesod.addHeader "Content-Disposition" $ pack ("attachment; filename=\"" ++ Models.Inode.name singleInode ++ "\"")
-      ClassyPrelude.Yesod.respondSource (S8.pack $ fromMaybe "application/octet-stream" (Models.Inode.mimeType singleInode)) $
-        retrieveFile singleInode ClassyPrelude.Yesod..| ClassyPrelude.Yesod.awaitForever ClassyPrelude.Yesod.sendChunkBS
+      addHeader "Content-Disposition" $ pack ("attachment; filename=\"" ++ Models.Inode.name singleInode ++ "\"")
+      respondSource (S8.pack $ fromMaybe "application/octet-stream" (mimeType singleInode)) $
+        retrieveFile singleInode .| awaitForever sendChunkBS
     multipleInodes -> do
       let archiveName = fromMaybe "Files" maybeFilename
-      ClassyPrelude.Yesod.addHeader "Content-Disposition" ("attachment; filename=\"" ++ decodeUtf8 archiveName ++ ".zip" ++ "\"")
+      addHeader "Content-Disposition" ("attachment; filename=\"" ++ decodeUtf8 archiveName ++ ".zip" ++ "\"")
       (_, tempFile) <- allocate (makeAllocateResource multipleInodes) freeResource
-      ClassyPrelude.Yesod.sendFile "application/zip" tempFile
+      sendFile "application/zip" tempFile
 
 makeAllocateResource :: [Models.Inode.Inode] -> IO FilePath
 makeAllocateResource inodes = do
@@ -99,59 +93,8 @@ makeAllocateResource inodes = do
 freeResource :: FilePath -> IO ()
 freeResource = removeFile
 
-createZip :: [Models.Inode.Inode] -> FilePath -> IO ()
-createZip inodes filename = do
-  timeZone <- liftIO getCurrentTimeZone
-  ClassyPrelude.Yesod.runConduitRes $
-    generateZipEntries inodes timeZone
-      ClassyPrelude.Yesod..| void (zipStream zipOptions)
-      ClassyPrelude.Yesod..| ClassyPrelude.Yesod.sinkFile filename
 
-generateZipEntries :: (MonadIO m, ClassyPrelude.Yesod.MonadResource m) => [Models.Inode.Inode] -> TimeZone -> ClassyPrelude.Yesod.ConduitM () (ZipEntry, ZipData m) m ()
-generateZipEntries (currentInode : nextInodes) timeZone = do
-  let nameInZip = fromMaybe (Models.Inode.name currentInode) $ Models.Inode.path currentInode
-  let size' = Models.Inode.size currentInode
-  timeStamp <- liftIO $ getTimestampForInode currentInode
-  let entry =
-        ZipEntry
-          { zipEntryName = Right $ fromString nameInZip,
-            zipEntryTime = utcToLocalTime timeZone timeStamp,
-            zipEntrySize = Nothing, -- Just (fromIntegral size'),
-            zipEntryExternalAttributes = Nothing
-          }
-
-  ClassyPrelude.Yesod.yield (entry, ZipDataSource $retrieveFile currentInode)
-  generateZipEntries nextInodes timeZone
-  return ()
-generateZipEntries [] _ = return ()
-
-zipOptions :: ZipOptions
-zipOptions =
-  ZipOptions
-    { zipOpt64 = True,
-      zipOptCompressLevel = 9,
-      zipOptInfo =
-        ZipInfo
-          { zipComment = ""
-          }
-    }
-
-getTimestampForInode :: Models.Inode.Inode -> IO UTCTime
-getTimestampForInode inode = do
-  let maybeTimeStamp = convertUnixTimeStamp (Models.Inode.lastUpdated inode)
-  case maybeTimeStamp of
-    Just timeStamp -> return timeStamp
-    Nothing -> getInodeModifcationTime inode
-
-convertUnixTimeStamp :: Int -> Maybe UTCTime
-convertUnixTimeStamp ts = do
-  let i = parseTimeM True defaultTimeLocale "%s" (show ts) :: Maybe UTCTime
-  case i of
-    Just timeWithoutTimezone -> do
-      Just timeWithoutTimezone
-    Nothing -> Nothing
-
-lookupRequiredInodeIds :: ClassyPrelude.Yesod.MonadHandler m => m String
+lookupRequiredInodeIds :: MonadHandler m => m String
 lookupRequiredInodeIds = do
-  maybeIds <- ClassyPrelude.Yesod.lookupGetParam "ids"
-  maybe (ClassyPrelude.Yesod.invalidArgs ["Missing ids query parameter."]) return $ unpack <$> maybeIds
+  maybeIds <- lookupGetParam "ids"
+  maybe (invalidArgs ["Missing ids query parameter."]) return $ unpack <$> maybeIds
