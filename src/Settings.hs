@@ -30,7 +30,8 @@ import Yesod.Default.Util
 
 data AppSettings = AppSettings
   { appProfile :: String,
-    fileSystemServiceSettings :: FileSystemServiceSettings
+    fileSystemServiceSettings :: FileSystemServiceSettings,
+    encryptionPassword :: String
   }
   deriving (Generic)
 

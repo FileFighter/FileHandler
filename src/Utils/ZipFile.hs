@@ -8,8 +8,11 @@ import Codec.Archive.Zip.Conduit.Zip
 import ClassyPrelude.Conduit
 import Data.Time
 import FileStorage (retrieveFile, getInodeModifcationTime)
+import Crypto.Cipher.AES
+import Crypto.Cipher.Types
+import Crypto.CryptoConduit (decryptConduit)
 
-createZip :: [Models.Inode.Inode] -> FilePath -> IO ()
+createZip :: [(Models.Inode.Inode,(AES256, IV AES256))] -> FilePath -> IO ()
 createZip inodes filename = do
   timeZone <- liftIO getCurrentTimeZone
   runConduitRes $
@@ -17,8 +20,8 @@ createZip inodes filename = do
       .| void (zipStream zipOptions)
       .| sinkFile filename
 
-generateZipEntries :: (MonadIO m, MonadResource m) => [Models.Inode.Inode] -> TimeZone -> ConduitM () (ZipEntry, ZipData m) m ()
-generateZipEntries (currentInode : nextInodes) timeZone = do
+generateZipEntries :: (MonadIO m, MonadResource m) => [(Models.Inode.Inode,(AES256, IV AES256))] -> TimeZone -> ConduitM () (ZipEntry, ZipData m) m ()
+generateZipEntries ((currentInode,(key,iv)) : nextInodes) timeZone = do
   let nameInZip = fromMaybe (Models.Inode.name currentInode) $ Models.Inode.path currentInode
   let size' = Models.Inode.size currentInode
   timeStamp <- liftIO $ getTimestampForInode currentInode
@@ -30,7 +33,7 @@ generateZipEntries (currentInode : nextInodes) timeZone = do
             zipEntryExternalAttributes = Nothing
           }
 
-  yield (entry, ZipDataSource $retrieveFile currentInode)
+  yield (entry, ZipDataSource $retrieveFile currentInode .| decryptConduit key iv mempty   )
   generateZipEntries nextInodes timeZone
   return ()
 generateZipEntries [] _ = return ()

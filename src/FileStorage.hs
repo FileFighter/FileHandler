@@ -7,6 +7,7 @@ import Models.Inode
 import ClassyPrelude.Yesod
 import System.Directory
 import Data.Time
+import GHC.IO.FD (openFile)
 
 
 
@@ -14,7 +15,7 @@ storeFile :: MonadResource m => Inode -> IO (ConduitT ByteString o m ())
 storeFile inode = do
   let id = show $ fileSystemId inode
   createDirectoryIfMissing True $  take 1 id
-  return  $sinkFile  (getPathFromFileId id)
+  return  $sinkFileCautious (getPathFromFileId id)
 
 
 retrieveFile :: MonadResource m => Inode ->ConduitT i ByteString m ()

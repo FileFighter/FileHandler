@@ -1,31 +1,45 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# OPTIONS_GHC -Wno-deprecations #-}
 
 -- |
 module Handler.Upload where
 
 import ClassyPrelude hiding (Handler)
 import ClassyPrelude.Yesod
-  ( FileInfo (fileContentType),
+  ( ConduitT,
+    FileInfo (fileContentType),
     runConduitRes,
     (.|),
   )
+import Crypto.Cipher.AES
+import Crypto.Cipher.Types (BlockCipher, IV, cipherInit, makeIV)
+import Crypto.CryptoConduit (encryptConduit)
+import Crypto.Error
+import Crypto.KeyEncrptionKey hiding (initCipher, initIV)
+import Crypto.Random
+import Crypto.Types
 import Data.Aeson
   ( Result (Error, Success),
     Value,
     fromJSON,
     object,
   )
+import Data.ByteArray
 import qualified Data.ByteString.Char8 as S8
 import Data.CaseInsensitive (mk)
 import qualified Data.Text as Text
-import FileStorage (storeFile,filterFiles)
+import FileStorage (filterFiles, getPathFromFileId, storeFile)
 import FileSystemServiceClient.FileSystemServiceClient
   ( FileSystemServiceClient (FileSystemServiceClient, createInode),
     UploadedInode (UploadedInode),
   )
-import Foundation (App (App, fileSystemServiceClient), Handler)
+import Foundation (App (App, fileSystemServiceClient, keyEncrptionKey), Handler)
 import Models.Inode (Inode (fileSystemId))
 import Network.HTTP.Types (Status (Status))
+import UnliftIO.Resource
+import Utils.HandlerUtils
 import Yesod.Core
   ( FileInfo,
     MonadHandler,
@@ -40,11 +54,11 @@ import Yesod.Core
     sendResponseStatus,
   )
 import Yesod.Core.Handler (sendResponseCreated)
-import Utils.HandlerUtils
+import Crypto.Init
 
 postUploadR :: Int -> Handler Value
 postUploadR parentId = do
-  App {fileSystemServiceClient = FileSystemServiceClient {createInode = createInode}} <- getYesod
+  App {fileSystemServiceClient = FileSystemServiceClient {createInode = createInode}, keyEncrptionKey = kek} <- getYesod
   authToken <- lookupBearerAuth
   case authToken of
     Nothing -> notAuthenticated
@@ -64,9 +78,8 @@ postUploadR parentId = do
                     Success createdInodes -> do
                       case filter filterFiles createdInodes of
                         [singleInode] -> do
-                          let a = fileSystemId singleInode
-                          fileDest <- liftIO $ storeFile singleInode
-                          runConduitRes $ fileSource file .| fileDest
+                          let alloc = makeAllocateResource kek singleInode
+                          (_, _) <- allocate (alloc) (makeFreeResource file singleInode)
                           return responseBody
                         _ -> sendInternalError
                     Error _ -> sendInternalError
@@ -83,3 +96,24 @@ lookupUploadedInode mimeType = do
 lookupSingleFile :: [(Text.Text, FileInfo)] -> Maybe FileInfo
 lookupSingleFile [("file", file)] = Just file
 lookupSingleFile _ = Nothing
+
+-- this creates the encryptionKey by generating it
+makeAllocateResource :: KeyEncryptionKey -> Inode -> IO (AES256, IV AES256)
+makeAllocateResource kek inode = do
+  secretKey :: Key AES256 ByteString <- genSecretKey (undefined :: AES256) 32
+  let Key keyBytes = secretKey
+  ivBytes <- genRandomIV (undefined :: AES256)
+  writeFile (getPathFromFileId (show $ fileSystemId inode) ++ ".key") (encryptWithKek kek keyBytes)
+  writeFile (getPathFromFileId (show $ fileSystemId inode) ++ ".iv") ivBytes
+
+  return (initCipher secretKey, initIV ivBytes)
+
+-- this takes the encryption information and encrypts and moves the file after the response has been send
+makeFreeResource :: FileInfo -> Inode -> (AES256, IV AES256) -> IO ()
+makeFreeResource fileInfo inode (cipher, iv) = do
+  fileDest <- storeFile inode
+  runConduitRes $
+    fileSource fileInfo
+      .| encryptConduit cipher iv mempty
+      .| fileDest
+

@@ -20,10 +20,12 @@ import Yesod.Core
     mkYesodData,
     parseRoutesFile,
   )
+import Crypto.KeyEncrptionKey (KeyEncryptionKey)
 
 data App = App
   { appSettings :: AppSettings,
-    fileSystemServiceClient :: FileSystemServiceClient
+    fileSystemServiceClient :: FileSystemServiceClient,
+    keyEncrptionKey ::  KeyEncryptionKey
   }
 
 mkYesodData "App" $(parseRoutesFile "routes.yesodroutes")

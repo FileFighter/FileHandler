@@ -27,6 +27,8 @@ dependencies:
 - file-embed
 - zip-stream
 - time
+- cryptonite
+- memory
 
 
 
