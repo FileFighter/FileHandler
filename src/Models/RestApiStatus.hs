@@ -1,10 +1,12 @@
 {-# LANGUAGE DeriveGeneric #-}
 -- |
 
+
 module Models.RestApiStatus where
 
+import ClassyPrelude
+
 import Data.Aeson
-import GHC.Generics
 
 data RestApiStatus = RestApiStatus
   { message :: !String,

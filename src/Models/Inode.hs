@@ -2,8 +2,8 @@
 
 module Models.Inode where
 
+import ClassyPrelude
 import Data.Aeson
-import GHC.Generics
 import Models.User
 
 data Inode = Inode

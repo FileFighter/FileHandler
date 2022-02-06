@@ -53,12 +53,7 @@ import Codec.Archive.Zip.Conduit.Zip
     ZipOptions (..),
     zipStream,
   )
-import Data.Aeson ()
 import qualified Data.ByteString.Char8 as S8
-import qualified Data.ByteString.Lazy as L
-import Data.CaseInsensitive ()
-import Data.Maybe ()
-import qualified Data.Text as DataText
 import Data.Time (TimeZone, getCurrentTimeZone, utcToLocalTime)
 import FileStorage (getInodeModifcationTime, retrieveFile)
 import FileSystemServiceClient.FileSystemServiceClient
@@ -68,21 +63,13 @@ import FileSystemServiceClient.FileSystemServiceClient
       ),
   )
 import Foundation (App (App, fileSystemServiceClient), Handler)
-import Logger ()
 import Models.Inode
     ( Inode(lastUpdated, mimeType, name, size,path) )
-import Models.RestApiStatus ()
-import Network.HTTP.Req ()
 import qualified Network.HTTP.Types as HttpTypes
-import Network.Wai ()
 import System.Directory (doesDirectoryExist, removeFile)
-import System.Environment ()
-import System.IO ()
 import System.IO.Temp (emptySystemTempFile)
 import UnliftIO.Resource (allocate)
-import Utils.FileUtils ()
 import Utils.HandlerUtils (handleApiCall, lookupAuth)
-import Yesod.Core ()
 
 getDownloadR :: Handler ClassyPrelude.Yesod.TypedContent
 getDownloadR = do

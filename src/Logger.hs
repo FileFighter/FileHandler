@@ -1,9 +1,9 @@
 -- |
 
 module Logger where
-import System.IO (hFlush, stdout)
+import ClassyPrelude
 
-logStdOut :: String -> IO ()
+logStdOut :: Text -> IO ()
 logStdOut text = do
   putStrLn text
   hFlush stdout

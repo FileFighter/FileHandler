@@ -4,6 +4,7 @@
 
 module Application where
 
+import ClassyPrelude
 import Data.Yaml.Config
 import FileSystemServiceClient.FileSystemServiceClient (makeFileSystemServiceClient)
 import Foundation

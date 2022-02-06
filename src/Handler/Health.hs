@@ -5,15 +5,11 @@
 module Handler.Health where
 
 import Foundation
+import ClassyPrelude hiding (Handler)
 import Yesod.Core
 import qualified Network.HTTP.Types as HttpTypes
-import Network.Wai
-import Data.Aeson
-import System.Environment
 import System.Directory
-import System.FilePath
-import Control.Monad
-import GHC.Generics
+    ( doesDirectoryExist, getFileSize, listDirectory )
 import Settings (AppSettings(AppSettings), appProfile)
 
 
@@ -43,4 +39,4 @@ getHealthR = do
 
 
 listDirectoryRelative :: FilePath -> IO [FilePath]
-listDirectoryRelative x = Prelude.map (x </>) <$> listDirectory x
+listDirectoryRelative x = map (x </>) <$> listDirectory x

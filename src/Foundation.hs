@@ -5,6 +5,7 @@
 
 module Foundation where
 
+import ClassyPrelude
 import FileSystemServiceClient.FileSystemServiceClient
   ( FileSystemServiceClient,
   )
@@ -19,7 +20,6 @@ import Yesod.Core
     mkYesodData,
     parseRoutesFile,
   )
-import Network.HTTP.Req
 
 data App = App
   { appSettings :: AppSettings,

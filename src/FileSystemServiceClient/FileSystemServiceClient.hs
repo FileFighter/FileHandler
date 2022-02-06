@@ -13,7 +13,25 @@ import Data.ByteString.Char8 (ByteString)
 import Data.Text
 import Data.Text.Encoding (encodeUtf8)
 import GHC.Generics
-import Network.HTTP.Req hiding (port)
+import Network.HTTP.Req
+    ( (/:),
+      (=:),
+      defaultHttpConfig,
+      header,
+      http,
+      jsonResponse,
+      req,
+      responseBody,
+      responseHeader,
+      responseStatusCode,
+      responseStatusMessage,
+      runReq,
+      DELETE(DELETE),
+      GET(GET),
+      HttpConfig(httpConfigCheckResponse),
+      NoReqBody(NoReqBody),
+      POST(POST),
+      ReqBodyJson(ReqBodyJson) )
 import qualified Network.HTTP.Req as Req
 import Settings
 import ClassyPrelude hiding (pack, encodeUtf8)

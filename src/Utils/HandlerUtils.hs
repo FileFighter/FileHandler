@@ -7,12 +7,37 @@
 module Utils.HandlerUtils where
 
 import ClassyPrelude
+    ( otherwise,
+      ($),
+      Monad(return, (>>=)),
+      Ord((<), (<=)),
+      Bool(..),
+      Int,
+      (<$>),
+      ByteString,
+      Text,
+      (&&),
+      maybe,
+      (.),
+      elem,
+      pack,
+      Utf8(decodeUtf8) )
 import Data.Aeson
 import Foundation
 import Models.RestApiStatus
 import Network.HTTP.Types
 import Network.Wai (rawPathInfo)
 import Yesod
+    ( sendResponseStatus,
+      notAuthenticated,
+      MonadHandler(HandlerSite),
+      getRequest,
+      lookupCookie,
+      lookupGetParam,
+      redirect,
+      RedirectUrl,
+      ContentType,
+      YesodRequest(reqWaiRequest, reqAccept) )
 
 sendInternalError :: MonadHandler m => m a
 sendInternalError = sendResponseStatus (Status 500 "Internal Server Error.") $ toJSON $ RestApiStatus "Internal Server Error" "500"

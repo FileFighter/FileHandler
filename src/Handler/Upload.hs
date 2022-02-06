@@ -3,7 +3,7 @@
 -- |
 module Handler.Upload where
 
-import ClassyPrelude.Conduit (runConduit, sinkFile, (.|))
+import ClassyPrelude hiding (Handler)
 import ClassyPrelude.Yesod
   ( FileInfo (fileContentType),
     runConduitRes,
@@ -18,7 +18,7 @@ import Data.Aeson
 import qualified Data.ByteString.Char8 as S8
 import Data.CaseInsensitive (mk)
 import qualified Data.Text as Text
-import FileStorage (storeFile)
+import FileStorage (storeFile,filterFiles)
 import FileSystemServiceClient.FileSystemServiceClient
   ( FileSystemServiceClient (FileSystemServiceClient, createInode),
     UploadedInode (UploadedInode),
@@ -26,7 +26,6 @@ import FileSystemServiceClient.FileSystemServiceClient
 import Foundation (App (App, fileSystemServiceClient), Handler)
 import Models.Inode (Inode (fileSystemId))
 import Network.HTTP.Types (Status (Status))
-import Utils.FileUtils (filterFiles)
 import Yesod.Core
   ( FileInfo,
     MonadHandler,
@@ -63,7 +62,7 @@ postUploadR parentId = do
                 201 -> do
                   case fromJSON responseBody of
                     Success createdInodes -> do
-                      case Prelude.filter filterFiles createdInodes of
+                      case filter filterFiles createdInodes of
                         [singleInode] -> do
                           let a = fileSystemId singleInode
                           fileDest <- liftIO $ storeFile singleInode

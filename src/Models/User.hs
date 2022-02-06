@@ -1,8 +1,9 @@
 {-# LANGUAGE DeriveGeneric #-}
 
 module Models.User where
+import ClassyPrelude
+
 import Data.Aeson
-import GHC.Generics
 
 data User = User
   { userId :: Int,
