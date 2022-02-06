@@ -23,14 +23,26 @@ import Models.Inode
 
 import Utils.HandlerUtils
 import FileSystemServiceClient.FileSystemServiceClient hiding (mimeType)
+import Crypto.KeyEncrptionKey
+import ClassyPrelude
+    ( ($),
+      Show(show),
+      Monoid(mempty),
+      Int,
+      fromMaybe,
+      MonadIO(liftIO),
+      String )
+import Crypto.CryptoConduit
 
 getPreviewR :: Int -> String -> Handler TypedContent
 getPreviewR inodeId _ = do
-  App {fileSystemServiceClient = FileSystemServiceClient {getInodeInfo = getInodeInfo'}} <- getYesod
+  App {fileSystemServiceClient = FileSystemServiceClient {getInodeInfo = getInodeInfo'}, keyEncrptionKey = kek} <- getYesod
   bearerToken <- lookupAuth
 
   (responseBody', responseStatusCode, responseStatusMessage) <- liftIO $ getInodeInfo' bearerToken $ show inodeId
   inode <- handleApiCall responseBody' responseStatusCode responseStatusMessage
+  (key, iv) <- liftIO $ getKeyForInode kek inode
   respondSource (S8.pack $ fromMaybe "application/octet-stream" (mimeType inode)) $
-    retrieveFile inode .| awaitForever sendChunkBS
-
+    retrieveFile inode
+    .| decryptConduit key iv mempty
+    .| awaitForever sendChunkBS

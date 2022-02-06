@@ -5,30 +5,48 @@
 module Handler.Download where
 
 import ClassyPrelude
-  ( Bool (True),
-    Either (Right),
-    FilePath,
-    IO,
-    Int,
-    IsString (fromString),
-    Maybe (..),
-    Monad (return),
-    MonadIO (..),
-    Show (show),
-    String,
-    UTCTime,
-    Utf8 (decodeUtf8),
-    defaultTimeLocale,
-    fromMaybe,
-    maybe,
-    pack,
-    parseTimeM,
-    unpack,
-    void,
-    ($),
-    (++),
-    (<$>)
-  )
+    ( Bool(True),
+      Either(Right),
+      FilePath,
+      IO,
+      Int,
+      IsString(fromString),
+      Maybe(..),
+      Monad(return),
+      MonadIO(..),
+      Show(show),
+      String,
+      UTCTime,
+      Utf8(decodeUtf8),
+      defaultTimeLocale,
+      fromMaybe,
+      maybe,
+      pack,
+      parseTimeM,
+      unpack,
+      void,
+      ($),
+      (++),
+      (<$>),
+      ($),
+      Monad(return),
+      Functor(fmap),
+      Show(show),
+      Traversable(mapM),
+      Monoid(mempty),
+      IO,
+      String,
+      MonadIO(liftIO),
+      fromMaybe,
+      maybe,
+      FilePath,
+      (<$>),
+      (++),
+      readFile,
+      tshow,
+      pack,
+      unpack,
+      Utf8(decodeUtf8) )
 import ClassyPrelude.Yesod
   ( ConduitM,
     MonadHandler,
@@ -67,27 +85,7 @@ import Utils.HandlerUtils (handleApiCall, lookupAuth)
 import Utils.ZipFile
 import Crypto.Cipher.AES
 import Crypto.Cipher.Types
-import Crypto.KeyEncrptionKey (KeyEncryptionKey, decryptWithKek)
-import ClassyPrelude
-    ( ($),
-      Monad(return),
-      Functor(fmap),
-      Show(show),
-      Traversable(mapM),
-      Monoid(mempty),
-      IO,
-      String,
-      MonadIO(liftIO),
-      fromMaybe,
-      maybe,
-      FilePath,
-      (<$>),
-      (++),
-      readFile,
-      tshow,
-      pack,
-      unpack,
-      Utf8(decodeUtf8) )
+import Crypto.KeyEncrptionKey (KeyEncryptionKey, decryptWithKek, getKeyForInode)
 import Crypto.Init
 import Crypto.Types (Key(Key))
 import Crypto.CryptoConduit (decryptConduit)
@@ -133,9 +131,3 @@ lookupRequiredInodeIds = do
 
 
 
-getKeyForInode ::  KeyEncryptionKey -> Inode ->  IO (AES256, IV AES256)
-getKeyForInode kek inode = do
-  key <- decryptWithKek kek <$> readFile (getPathFromFileId (show $ fileSystemId inode) ++ ".key")
-  iv <- readFile (getPathFromFileId (show $ fileSystemId inode) ++ ".iv")
-
-  return (initCipher $ Key key, initIV iv)

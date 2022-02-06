@@ -26,7 +26,7 @@ import Data.Aeson
     fromJSON,
     object,
   )
-import Data.ByteArray
+import Data.ByteArray hiding (take)
 import qualified Data.ByteString.Char8 as S8
 import Data.CaseInsensitive (mk)
 import qualified Data.Text as Text
@@ -55,6 +55,7 @@ import Yesod.Core
   )
 import Yesod.Core.Handler (sendResponseCreated)
 import Crypto.Init
+import System.Directory (createDirectoryIfMissing)
 
 postUploadR :: Int -> Handler Value
 postUploadR parentId = do
@@ -79,7 +80,7 @@ postUploadR parentId = do
                       case filter filterFiles createdInodes of
                         [singleInode] -> do
                           let alloc = makeAllocateResource kek singleInode
-                          (_, _) <- allocate (alloc) (makeFreeResource file singleInode)
+                          (_, _) <- allocate alloc (makeFreeResource file singleInode)
                           return responseBody
                         _ -> sendInternalError
                     Error _ -> sendInternalError
@@ -103,6 +104,7 @@ makeAllocateResource kek inode = do
   secretKey :: Key AES256 ByteString <- genSecretKey (undefined :: AES256) 32
   let Key keyBytes = secretKey
   ivBytes <- genRandomIV (undefined :: AES256)
+  createDirectoryIfMissing True $  take 1 (show $ fileSystemId inode )
   writeFile (getPathFromFileId (show $ fileSystemId inode) ++ ".key") (encryptWithKek kek keyBytes)
   writeFile (getPathFromFileId (show $ fileSystemId inode) ++ ".iv") ivBytes
 
