@@ -104,9 +104,9 @@ makeAllocateResource kek inode = do
   secretKey :: Key AES256 ByteString <- genSecretKey (undefined :: AES256) 32
   let Key keyBytes = secretKey
   ivBytes <- genRandomIV (undefined :: AES256)
-  createDirectoryIfMissing True $  take 1 (show $ fileSystemId inode )
-  writeFile (getPathFromFileId (show $ fileSystemId inode) ++ ".key") (encryptWithKek kek keyBytes)
-  writeFile (getPathFromFileId (show $ fileSystemId inode) ++ ".iv") ivBytes
+  createDirectoryIfMissing True $ "keys/" <> take 1 (show $ fileSystemId inode )
+  writeFile ("keys/" <> getPathFromFileId (show $ fileSystemId inode) ++ ".key") (encryptWithKek kek keyBytes)
+  writeFile ("keys/" <> getPathFromFileId (show $ fileSystemId inode) ++ ".iv") ivBytes
 
   return (initCipher secretKey, initIV ivBytes)
 

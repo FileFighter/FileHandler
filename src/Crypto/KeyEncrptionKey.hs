@@ -72,7 +72,7 @@ decryptWithKek r@KeyEncryptionKey {blockCipher = cipher, initialIV = iv} message
 
 getKeyForInode ::  KeyEncryptionKey -> Inode ->  IO (AES256, IV AES256)
 getKeyForInode kek inode = do
-  key <- decryptWithKek kek <$> readFile (getPathFromFileId (show $ fileSystemId inode) ++ ".key")
-  iv <- readFile (getPathFromFileId (show $ fileSystemId inode) ++ ".iv")
+  key <- decryptWithKek kek <$> readFile ("keys/" <> getPathFromFileId (show $ fileSystemId inode) ++ ".key")
+  iv <- readFile ("keys/" <> getPathFromFileId (show $ fileSystemId inode) ++ ".iv")
 
   return (initCipher $ Key key, initIV iv)
