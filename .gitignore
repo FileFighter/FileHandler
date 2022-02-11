@@ -1,4 +1,5 @@
 *.aux
+kek.iv
 *.chi
 *.chs.h
 *.dyn_hi
@@ -33,3 +34,14 @@ dist-*
 static/combined/
 static/tmp/
 yesod-devel/
+.hie
+1
+2
+3
+4
+5
+client_session_key.aes
+keys
+mprofile_*.dat
+stan.html
+
