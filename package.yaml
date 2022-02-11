@@ -5,9 +5,9 @@ dependencies:
 - base
 - yesod
 - yesod-core
-- classy-prelude >=1.5 && <1.6
-- classy-prelude-conduit >=1.5 && <1.6
-- classy-prelude-yesod >=1.5 && <1.6
+- classy-prelude
+- classy-prelude-conduit
+- classy-prelude-yesod
 - http-types
 - bytestring
 - aeson
@@ -36,6 +36,13 @@ dependencies:
 # defined below is just a thin wrapper.
 library:
   source-dirs: src
+  ghc-options:
+  - -threaded
+  - -rtsopts
+  - -with-rtsopts=-N
+  - -fwrite-ide-info
+  - -hiedir=.hie
+
 
 # Runnable executable for our application
 executables:
@@ -46,6 +53,9 @@ executables:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
+    - -fwrite-ide-info
+    - -hiedir=.hie
+
     dependencies:
     - FileHandlerYesod
 
