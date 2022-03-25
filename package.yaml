@@ -2,33 +2,34 @@ name:    FileHandlerYesod
 version: "0.1.0"
 
 dependencies:
+- aeson
 - base
-- yesod
-- yesod-core
+- bytestring
+- case-insensitive
 - classy-prelude
 - classy-prelude-conduit
 - classy-prelude-yesod
+- cryptonite
+- directory
+- file-embed
+- filepath
 - http-types
-- bytestring
-- aeson
+- memory
+- mtl
+- req
+- resourcet
+- temporary
+- text
+- time
 - wai
 - wai-extra
+- wai-cors
 - warp
-- text
-- req
-- zip
-- temporary
-- case-insensitive
-- resourcet
-- mtl
-- directory
-- filepath
 - yaml
-- file-embed
+- yesod
+- yesod-core
+- zip
 - zip-stream
-- time
-- cryptonite
-- memory
 
 
 
@@ -36,12 +37,6 @@ dependencies:
 # defined below is just a thin wrapper.
 library:
   source-dirs: src
-  ghc-options:
-  - -threaded
-  - -rtsopts
-  - -with-rtsopts=-N
-  - -fwrite-ide-info
-  - -hiedir=.hie
 
 
 # Runnable executable for our application
@@ -53,8 +48,6 @@ executables:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
-    - -fwrite-ide-info
-    - -hiedir=.hie
 
     dependencies:
     - FileHandlerYesod

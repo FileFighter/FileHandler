@@ -8,10 +8,22 @@ import Data.Aeson
 data User = User
   { userId :: Int,
     username :: String,
-    groups :: [String]
+    privileges :: String
   }
   deriving (Show, Generic)
 
-instance FromJSON User
 
 instance ToJSON User
+
+userIdFieldRename :: String -> String
+userIdFieldRename "userId" = "id"
+userIdFieldRename "id" = "userId"
+userIdFieldRename name = name
+
+instance FromJSON User where
+  parseJSON =
+    genericParseJSON
+      defaultOptions
+        { fieldLabelModifier = userIdFieldRename,
+          omitNothingFields = True
+        }

@@ -5,24 +5,22 @@ module Models.Inode where
 import ClassyPrelude
 import Data.Aeson
 import Models.User
+import Models.Path (Path)
 
 data Inode = Inode
-  { fileSystemId :: !Int,
+  { fileSystemId :: String,
     name :: String,
     path :: Maybe String,
-    size :: Int,
-    owner :: User,
-    lastUpdatedBy :: User,
-    lastUpdated :: Int,
     mimeType :: Maybe String,
-    filesystemType :: String,
-    shared :: Bool
+    size :: Int,
+    lastUpdated :: Int,
+    lastUpdatedBy :: User
   }
   deriving (Show, Generic)
 
 typeFieldRename :: String -> String
-typeFieldRename "filesystemType" = "type"
-typeFieldRename "type" = "filesystemType"
+typeFieldRename "fileSystemId" = "id"
+typeFieldRename "id" = "fileSystemId"
 typeFieldRename name = name
 
 instance FromJSON Inode where

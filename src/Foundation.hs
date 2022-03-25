@@ -31,6 +31,6 @@ data App = App
 mkYesodData "App" $(parseRoutesFile "routes.yesodroutes")
 
 instance Yesod App where
-  maximumContentLength _ (Just (UploadR _)) = Nothing
+  maximumContentLength _ (Just (UploadR)) = Nothing
   maximumContentLength _ _ = Just (2 * 1024 * 1024) -- 2 megabytes
   fileUpload _ _ = FileUploadDisk tempFileBackEnd

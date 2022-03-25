@@ -21,7 +21,7 @@ import ClassyPrelude
       (.),
       elem,
       pack,
-      Utf8(decodeUtf8) )
+      Utf8(decodeUtf8), MonadIO (liftIO), print, putStr, putStrLn )
 import Data.Aeson
 import Foundation
 import Models.RestApiStatus
@@ -48,7 +48,9 @@ handleApiCall body statusCode statusMessage
     case fromJSON body of
       Success value ->
         return value
-      Error _ -> sendInternalError
+      Error e -> do
+        liftIO $ print  e
+        sendInternalError
   | 400 <= statusCode && statusCode < 500 = sendErrorOrRedirect (Status statusCode statusMessage) body --sendResponseStatus (Status statusCode statusMessage) body
   | otherwise = sendInternalError
 

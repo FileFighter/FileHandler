@@ -42,6 +42,7 @@ import ClassyPrelude.Conduit
       await,
       yield )
 import Crypto.Cipher.Types
+    ( BlockCipher(blockSize, cbcEncrypt, cbcDecrypt), IV, makeIV )
 import Crypto.Data.Padding
 
 encryptConduit :: (BlockCipher c, Monad m) => c -> IV c -> ByteString -> ConduitT ByteString ByteString  m ()

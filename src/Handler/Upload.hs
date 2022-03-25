@@ -11,7 +11,7 @@ import ClassyPrelude.Yesod
   ( ConduitT,
     FileInfo (fileContentType),
     runConduitRes,
-    (.|),
+    (.|), defaultMakeLogger, Response (responseBody)
   )
 import Crypto.Cipher.AES
 import Crypto.Cipher.Types (BlockCipher, IV, cipherInit, makeIV)
@@ -56,43 +56,38 @@ import Yesod.Core
 import Yesod.Core.Handler (sendResponseCreated)
 import Crypto.Init
 import System.Directory (createDirectoryIfMissing)
+import Yesod.Core.Types (loggerPutStr)
+import Prelude (read)
+import Models.Path (Path(Path))
 
-postUploadR :: Int -> Handler Value
-postUploadR parentId = do
+postUploadR :: Handler Value
+postUploadR = do
   App {fileSystemServiceClient = FileSystemServiceClient {createInode = createInode}, keyEncrptionKey = kek} <- getYesod
-  authToken <- lookupBearerAuth
-  case authToken of
-    Nothing -> notAuthenticated
-    Just bearerToken -> do
-      (_params, files) <- runRequestBody
-      case lookupSingleFile files of
-        Nothing -> invalidArgs ["Missing required File."]
-        Just file -> do
-          inodeToCreate <- lookupUploadedInode $ Just (Text.unpack $ fileContentType file)
-          case inodeToCreate of
-            Nothing -> invalidArgs ["Missing required Header."]
-            Just inode -> do
-              (responseBody, responseStatusCode, responseStatusMessage) <- liftIO $ createInode bearerToken inode (show parentId)
-              case responseStatusCode of
-                201 -> do
-                  case fromJSON responseBody of
-                    Success createdInodes -> do
-                      case filter filterFiles createdInodes of
-                        [singleInode] -> do
-                          let alloc = makeAllocateResource kek singleInode
-                          (_, _) <- allocate alloc (makeFreeResource file singleInode)
-                          return responseBody
-                        _ -> sendInternalError
-                    Error _ -> sendInternalError
-                _ -> sendResponseStatus (Status responseStatusCode responseStatusMessage) responseBody
+  authToken <- lookupAuth
+  (_params, files) <- runRequestBody
+  case lookupSingleFile files of
+    Nothing -> invalidArgs ["Missing required File."]
+    Just file -> do
+      inodeToCreate <- lookupUploadedInode $ Just (Text.unpack $ fileContentType file)
+      case inodeToCreate of
+        Nothing -> invalidArgs ["Missing required Header."]
+        Just inode -> do
+          (responseBody, responseStatusCode, responseStatusMessage) <- liftIO $ createInode authToken inode
+          liftIO $ print $ show responseBody
+          createdInodes <- handleApiCall responseBody responseStatusCode responseStatusMessage
+          case filter filterFiles createdInodes of
+            [singleInode] -> do
+              let alloc = makeAllocateResource kek singleInode
+              (_, _) <- allocate alloc (makeFreeResource file singleInode)
+              return responseBody
+            _ -> sendInternalError
 
 lookupUploadedInode :: MonadHandler m => Maybe String -> m (Maybe UploadedInode)
 lookupUploadedInode mimeType = do
-  name <- lookupHeader $ Data.CaseInsensitive.mk "X-FF-NAME"
-  path <- lookupHeader $ Data.CaseInsensitive.mk "X-FF-PATH"
+  relativePath <- lookupHeader $ Data.CaseInsensitive.mk "X-FF-RELATIVE-PATH"
+  parentPath <- lookupHeader $ Data.CaseInsensitive.mk "X-FF-PARENT-PATH"
   size <- lookupHeader $ Data.CaseInsensitive.mk "X-FF-SIZE"
-
-  return $ UploadedInode <$> (S8.unpack <$> name) <*> (S8.unpack <$> path) <*> mimeType <*> (S8.unpack <$> size)
+  return $ UploadedInode <$> (Path . S8.unpack <$> parentPath) <*> (Path . S8.unpack <$> relativePath) <*> (read . S8.unpack <$> size) <*> mimeType
 
 lookupSingleFile :: [(Text.Text, FileInfo)] -> Maybe FileInfo
 lookupSingleFile [("file", file)] = Just file

@@ -35,19 +35,21 @@ import Network.HTTP.Req
 import qualified Network.HTTP.Req as Req
 import Settings
 import ClassyPrelude hiding (pack, encodeUtf8)
+import Models.Path (Path)
 
 data FileSystemServiceClient = FileSystemServiceClient
   { deleteInode :: Text -> String -> IO (Value, Int, ByteString),
-    createInode :: Text -> UploadedInode -> String -> IO (Value, Int, ByteString),
+    createInode :: Text -> UploadedInode ->  IO (Value, Int, ByteString),
     getInodeInfo ::Text -> String -> IO (Value, Int, ByteString),
     getInodeContent ::  Text -> String -> IO (Value, Int, ByteString, Maybe ByteString)
   }
 
 data UploadedInode = UploadedInode
-  { name :: String,
-    path :: String,
-    mimeType :: String,
-    size :: String
+  {
+    parentPath :: Path,
+    relativePath :: Path,
+    size :: Integer,
+    mimeType :: String
   }
   deriving (Show, Generic)
 
@@ -78,13 +80,13 @@ makeDeleteInode r@FileSystemServiceSettings {url = url, port = port} authorizati
 
 oAuth2Bearer' token = header "Authorization" ("Bearer " <> token)
 
-makeCreateInode :: FileSystemServiceSettings -> Text -> UploadedInode -> String -> IO (Value, Int, ByteString)
-makeCreateInode r@FileSystemServiceSettings {url = url, port = port} authorization uploadedInode fileId = runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
+makeCreateInode :: FileSystemServiceSettings -> Text -> UploadedInode ->  IO (Value, Int, ByteString)
+makeCreateInode r@FileSystemServiceSettings {url = url, port = port} authorization uploadedInode = runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
   r <-
     req
       POST -- method
       --(http (DataText.pack restUrl) /: "t/os3vu-1615111052/post")
-      (http (pack url) /:  "v1" /: "filesystem" /: pack fileId /: "upload")
+      (http (pack url) /:  "api" /: "filesystem" /: "upload")
       (ReqBodyJson uploadedInode) -- use built-in options or add your own
       jsonResponse
       (oAuth2Bearer' (encodeUtf8 authorization) <> Req.port port) -- parentID not in Headers

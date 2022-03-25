@@ -33,6 +33,6 @@ getInodeModifcationTime inode =  do
 
 
 filterFiles :: Inode -> Bool
-filterFiles file = case filesystemType file of
-  "FOLDER" -> False
+filterFiles file = case mimeType file of
+  Nothing -> False
   _ -> True

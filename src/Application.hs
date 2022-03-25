@@ -5,22 +5,42 @@
 module Application where
 
 import ClassyPrelude
+    ( ($),
+      Monad(return),
+      Num((*)),
+      Bool(False, True),
+      Maybe(Just, Nothing),
+      IO,
+      const )
 import Crypto.KeyEncrptionKey (createKeyEncrptionKey, getOrCreateKekIV)
-import Data.Yaml.Config
+import Data.Yaml.Config ( loadYamlSettingsArgs, useEnv )
 import FileSystemServiceClient.FileSystemServiceClient (makeFileSystemServiceClient)
 import Foundation
-import Handler.Delete
-import Handler.Download
-import Handler.Error
-import Handler.Health
-import Handler.Home
-import Handler.Preview
-import Handler.Upload
+    ( Route(ErrorR, HomeR, DownloadR, UploadR, DeleteR, PreviewR,
+            HealthR),
+      App(..),
+      resourcesApp )
+import Handler.Delete ( deleteDeleteR )
+import Handler.Download ( getDownloadR )
+import Handler.Error ( getErrorR )
+import Handler.Health ( getHealthR )
+import Handler.Home ( getHomeR )
+import Handler.Preview ( getPreviewR )
+import Handler.Upload ( postUploadR )
+import Network.Wai ()
+import Network.Wai.Handler.Warp ( run )
+import Network.Wai.Middleware.Cors
+    ( cors,
+      CorsResourcePolicy(CorsResourcePolicy, corsOrigins, corsMethods,
+                         corsRequestHeaders, corsExposedHeaders, corsMaxAge, corsVaryOrigin,
+                         corsRequireOrigin, corsIgnoreFailures) )
+import Network.Wai.Parse ()
+import Network.Wai.Middleware.Cors ()
 import Settings
   ( AppSettings (encryptionPassword, fileSystemServiceSettings),
     configSettingsYmlValue,
   )
-import Yesod.Core
+import Yesod.Core ( toWaiApp, mkYesodDispatch )
 
 mkYesodDispatch "App" resourcesApp
 
@@ -50,4 +70,19 @@ appMain = do
 
   app <- makeFoundation settings
 
-  warp 5000 app
+  application <- toWaiApp app
+
+  run 5000 $ cors (const devCorsPolicy) application
+
+devCorsPolicy =
+  Just
+    CorsResourcePolicy
+      { corsOrigins = Just (["http://localhost:3000"],True),
+        corsMethods = ["GET", "POST", "DELETE"],
+        corsRequestHeaders = ["Authorization", "content-type", "X-FF-IDS", "X-FF-ID", "X-FF-NAME", "X-FF-PATH", "X-FF-SIZE","X-FF-PARENT-PATH","X-FF-RELATIVE-PATH","X-FF-PARENT-PATH"],
+        corsExposedHeaders = Just ["Content-Disposition"],
+        corsMaxAge = Just $ 60 * 60 * 24, -- one day
+        corsVaryOrigin = False,
+        corsRequireOrigin = False,
+        corsIgnoreFailures = False
+      }
