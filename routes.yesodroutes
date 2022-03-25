@@ -1,7 +1,7 @@
 /              HomeR GET
-/data/download DownloadR GET
+/data/download/*[Text] DownloadR GET
 /data/upload UploadR POST
-/data/delete/#Int DeleteR DELETE
-/data/preview/#Int/#String PreviewR GET
+/data/delete/+[Text] DeleteR DELETE
+/data/preview/*[Text] PreviewR GET
 /data/health HealthR GET
 /error ErrorR GET

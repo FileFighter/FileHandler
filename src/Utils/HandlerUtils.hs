@@ -51,8 +51,12 @@ handleApiCall body statusCode statusMessage
       Error e -> do
         liftIO $ print  e
         sendInternalError
-  | 400 <= statusCode && statusCode < 500 = sendErrorOrRedirect (Status statusCode statusMessage) body --sendResponseStatus (Status statusCode statusMessage) body
-  | otherwise = sendInternalError
+  | 400 <= statusCode && statusCode < 500 = do
+      liftIO $ print "4XX domain error"
+      sendErrorOrRedirect (Status statusCode statusMessage) body --sendResponseStatus (Status statusCode statusMessage) body
+  | otherwise = do
+        liftIO $ print body
+        sendInternalError
 
 sendErrorOrRedirect :: (MonadHandler m, RedirectUrl (HandlerSite m) (Route App, [(Text, Text)])) => Status -> Value -> m a
 sendErrorOrRedirect status body =

@@ -34,14 +34,15 @@ import Network.HTTP.Req
       ReqBodyJson(ReqBodyJson) )
 import qualified Network.HTTP.Req as Req
 import Settings
-import ClassyPrelude hiding (pack, encodeUtf8)
-import Models.Path (Path)
+import ClassyPrelude hiding (intercalate, pack, encodeUtf8)
+import Models.Path (Path, fromMultiPiece, toByteString)
+import qualified Data.ByteString as S8
 
 data FileSystemServiceClient = FileSystemServiceClient
-  { deleteInode :: Text -> String -> IO (Value, Int, ByteString),
+  { deleteInode :: Text -> [Text] -> IO (Value, Int, ByteString),
     createInode :: Text -> UploadedInode ->  IO (Value, Int, ByteString),
     getInodeInfo ::Text -> String -> IO (Value, Int, ByteString),
-    getInodeContent ::  Text -> String -> IO (Value, Int, ByteString, Maybe ByteString)
+    getInodeContent ::  Text -> Path -> IO (Value, Int, ByteString)
   }
 
 data UploadedInode = UploadedInode
@@ -67,15 +68,16 @@ makeFileSystemServiceClient fileSystemServiceSettings =
       getInodeContent  = makeGetInodeContent fileSystemServiceSettings
     }
 
-makeDeleteInode :: FileSystemServiceSettings -> Text -> String -> IO (Value, Int, ByteString)
-makeDeleteInode r@FileSystemServiceSettings {url = url, port = port} authorization fileId = runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
+makeDeleteInode :: FileSystemServiceSettings -> Text ->   [Text] -> IO (Value, Int, ByteString)
+makeDeleteInode r@FileSystemServiceSettings {url = url, port = port} authorization path = runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
   r <-
     req
       DELETE
-      (http (pack url) /: "v1" /: "filesystem" /: pack fileId /: "delete")
+      (http (pack url) /: "api" /: "filesystem" /:  "delete")
       NoReqBody
       jsonResponse
-      (oAuth2Bearer' (encodeUtf8 authorization) <> Req.port port) -- parentID not in Headers
+      (oAuth2Bearer' (encodeUtf8 authorization) <> Req.port port
+      <> header "X-FF-PATH" (toByteString $ fromMultiPiece path))
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
 oAuth2Bearer' token = header "Authorization" ("Bearer " <> token)
@@ -105,19 +107,17 @@ makeGetInodeInfo r@FileSystemServiceSettings {url = url, port = port} authorizat
       -- mempty -- query params, headers, explicit port number, etc.
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
-makeGetInodeContent :: FileSystemServiceSettings ->  Text -> String -> IO (Value, Int, ByteString, Maybe ByteString)
-makeGetInodeContent r@FileSystemServiceSettings {url = url, port = port} authorization ids = runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
+makeGetInodeContent :: FileSystemServiceSettings -> Text -> Path -> IO (Value, Int, ByteString)
+makeGetInodeContent r@FileSystemServiceSettings {url = url, port = port} authorization path = runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
   r <-
     req
       GET -- method
-      (http (pack url) /:  "v1" /: "filesystem" /: "download") -- safe by construction URL
+      (http (pack url) /:  "api" /: "filesystem" /: "download") -- safe by construction URL
       -- (http (DataText.pack restUrl) /:"v1" /: "filesystem" /: DataText.pack  (S8.unpack (getOneHeader allHeaders "X-FF-IDS" )) /: "info")
       NoReqBody -- use built-in options or add your own
       jsonResponse -- specify how to interpret response
       (oAuth2Bearer' (encodeUtf8 authorization)
-       <> Req.port port
-       <> header "X-FF-IDS" (fromString ids)
-       <> header "Cookie"  ("token=" <> encodeUtf8 authorization)
-       <> (=:) "ids" ids )
+      <> Req.port port
+      <> header "X-FF-PATH" (toByteString  path))
       -- mempty -- query params, headers, explicit port number, etc.
-  return (responseBody r, responseStatusCode r, responseStatusMessage r, responseHeader r "X-FF-NAME")
+  return (responseBody r, responseStatusCode r, responseStatusMessage r)
