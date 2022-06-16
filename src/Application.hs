@@ -5,42 +5,60 @@
 module Application where
 
 import ClassyPrelude
-    ( ($),
-      Monad(return),
-      Num((*)),
-      Bool(False, True),
-      Maybe(Just, Nothing),
-      IO,
-      const )
+  ( Bool (False, True),
+    IO,
+    Maybe (Just, Nothing),
+    Monad (return),
+    Num ((*)),
+    const,
+    ($),
+  )
+import ClassyPrelude.Yesod (PersistConfig (createPoolConfig))
 import Crypto.KeyEncrptionKey (createKeyEncrptionKey, getOrCreateKekIV)
-import Data.Yaml.Config ( loadYamlSettingsArgs, useEnv )
+import Data.Yaml.Config (loadYamlSettingsArgs, useEnv)
 import FileSystemServiceClient.FileSystemServiceClient (makeFileSystemServiceClient)
 import Foundation
-    ( Route(ErrorR, HomeR, DownloadR, UploadR, DeleteR, PreviewR,
-            HealthR),
-      App(..),
-      resourcesApp )
-import Handler.Delete ( deleteDeleteR )
-import Handler.Download ( getDownloadR )
-import Handler.Error ( getErrorR )
-import Handler.Health ( getHealthR )
-import Handler.Home ( getHomeR )
-import Handler.Preview ( getPreviewR )
-import Handler.Upload ( postUploadR )
+  ( App (..),
+    Route
+      ( DeleteR,
+        DownloadR,
+        ErrorR,
+        HealthR,
+        HomeR,
+        PreviewR,
+        UploadR
+      ),
+    resourcesApp,
+  )
+import Handler.Delete (deleteDeleteR)
+import Handler.Download (getDownloadR)
+import Handler.Error (getErrorR)
+import Handler.Health (getHealthR)
+import Handler.Home (getHomeR)
+import Handler.Preview (getPreviewR)
+import Handler.Upload (postUploadR)
 import Network.Wai ()
-import Network.Wai.Handler.Warp ( run )
+import Network.Wai.Handler.Warp (run)
 import Network.Wai.Middleware.Cors
-    ( cors,
-      CorsResourcePolicy(CorsResourcePolicy, corsOrigins, corsMethods,
-                         corsRequestHeaders, corsExposedHeaders, corsMaxAge, corsVaryOrigin,
-                         corsRequireOrigin, corsIgnoreFailures) )
+  ( CorsResourcePolicy
+      ( CorsResourcePolicy,
+        corsExposedHeaders,
+        corsIgnoreFailures,
+        corsMaxAge,
+        corsMethods,
+        corsOrigins,
+        corsRequestHeaders,
+        corsRequireOrigin,
+        corsVaryOrigin
+      ),
+    cors,
+  )
 import Network.Wai.Parse ()
-import Network.Wai.Middleware.Cors ()
 import Settings
-  ( AppSettings (encryptionPassword, fileSystemServiceSettings),
+  ( AppSettings (appDatabaseConf, encryptionPassword, fileSystemServiceSettings),
     configSettingsYmlValue,
   )
-import Yesod.Core ( toWaiApp, mkYesodDispatch )
+import Yesod.Core (mkYesodDispatch, toWaiApp)
 
 mkYesodDispatch "App" resourcesApp
 
@@ -50,10 +68,12 @@ makeFoundation appSettings = do
 
   iv <- getOrCreateKekIV
   let keyEncrptionKey = createKeyEncrptionKey (encryptionPassword appSettings) iv
+  appConnPool <- createPoolConfig $ appDatabaseConf appSettings
 
   return
     App
       { appSettings = appSettings,
+        appConnPool = appConnPool,
         fileSystemServiceClient = fssC,
         keyEncrptionKey = keyEncrptionKey
       }
@@ -77,9 +97,9 @@ appMain = do
 devCorsPolicy =
   Just
     CorsResourcePolicy
-      { corsOrigins = Just (["http://localhost:3000"],True),
+      { corsOrigins = Just (["http://localhost:3000"], True),
         corsMethods = ["GET", "POST", "DELETE"],
-        corsRequestHeaders = ["Authorization", "content-type", "X-FF-IDS", "X-FF-ID", "X-FF-NAME", "X-FF-PATH", "X-FF-SIZE","X-FF-PARENT-PATH","X-FF-RELATIVE-PATH","X-FF-PARENT-PATH"],
+        corsRequestHeaders = ["Authorization", "content-type", "X-FF-IDS", "X-FF-ID", "X-FF-NAME", "X-FF-PATH", "X-FF-SIZE", "X-FF-PARENT-PATH", "X-FF-RELATIVE-PATH", "X-FF-PARENT-PATH"],
         corsExposedHeaders = Just ["Content-Disposition"],
         corsMaxAge = Just $ 60 * 60 * 24, -- one day
         corsVaryOrigin = False,

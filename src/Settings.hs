@@ -19,6 +19,7 @@ import Data.Aeson
   )
 import Data.FileEmbed (embedFile)
 import Data.Yaml (decodeEither')
+import Database.Persist.MongoDB (MongoConf)
 import GHC.Generics
 import Network.Wai.Handler.Warp (HostPreference)
 import Yesod.Default.Config2 (applyEnvValue, configSettingsYml)
@@ -30,6 +31,7 @@ import Yesod.Default.Util
 
 data AppSettings = AppSettings
   { appProfile :: String,
+    appDatabaseConf :: MongoConf,
     fileSystemServiceSettings :: FileSystemServiceSettings,
     encryptionPassword :: String
   }
