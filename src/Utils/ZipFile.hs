@@ -1,18 +1,19 @@
--- |
 {-# LANGUAGE OverloadedStrings #-}
 
+-- |
 module Utils.ZipFile where
+
 import ClassyPrelude
-import qualified Models.Inode
-import Codec.Archive.Zip.Conduit.Zip
 import ClassyPrelude.Conduit
-import Data.Time
-import FileStorage (retrieveFile, getInodeModifcationTime)
+import Codec.Archive.Zip.Conduit.Zip
 import Crypto.Cipher.AES
 import Crypto.Cipher.Types
 import Crypto.CryptoConduit (decryptConduit)
+import Data.Time
+import FileStorage (getInodeModifcationTime, retrieveFile)
+import qualified Models.Inode
 
-createZip :: [(Models.Inode.Inode,(AES256, IV AES256))] -> FilePath -> IO ()
+createZip :: [(Models.Inode.Inode, (AES256, IV AES256))] -> FilePath -> IO ()
 createZip inodes filename = do
   timeZone <- liftIO getCurrentTimeZone
   runConduitRes $
@@ -20,8 +21,8 @@ createZip inodes filename = do
       .| void (zipStream zipOptions)
       .| sinkFile filename
 
-generateZipEntries :: (MonadIO m, MonadResource m) => [(Models.Inode.Inode,(AES256, IV AES256))] -> TimeZone -> ConduitM () (ZipEntry, ZipData m) m ()
-generateZipEntries ((currentInode,(key,iv)) : nextInodes) timeZone = do
+generateZipEntries :: (MonadIO m, MonadResource m) => [(Models.Inode.Inode, (AES256, IV AES256))] -> TimeZone -> ConduitM () (ZipEntry, ZipData m) m ()
+generateZipEntries ((currentInode, (key, iv)) : nextInodes) timeZone = do
   let nameInZip = fromMaybe (Models.Inode.name currentInode) $ Models.Inode.path currentInode
   let size' = Models.Inode.size currentInode
   timeStamp <- liftIO $ getTimestampForInode currentInode
@@ -33,7 +34,7 @@ generateZipEntries ((currentInode,(key,iv)) : nextInodes) timeZone = do
             zipEntryExternalAttributes = Nothing
           }
 
-  yield (entry, ZipDataSource $retrieveFile currentInode .| decryptConduit key iv mempty   )
+  yield (entry, ZipDataSource $retrieveFile currentInode .| decryptConduit key iv mempty)
   generateZipEntries nextInodes timeZone
   return ()
 generateZipEntries [] _ = return ()
@@ -58,8 +59,4 @@ getTimestampForInode inode = do
 
 convertUnixTimeStamp :: Int -> Maybe UTCTime
 convertUnixTimeStamp ts = do
-  let i = parseTimeM True defaultTimeLocale "%s" (show ts) :: Maybe UTCTime
-  case i of
-    Just timeWithoutTimezone -> do
-      Just timeWithoutTimezone
-    Nothing -> Nothing
+  parseTimeM True defaultTimeLocale "%s" (show ts) :: Maybe UTCTime

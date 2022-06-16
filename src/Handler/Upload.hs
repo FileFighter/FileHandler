@@ -10,13 +10,18 @@ import ClassyPrelude hiding (Handler)
 import ClassyPrelude.Yesod
   ( ConduitT,
     FileInfo (fileContentType),
+    Response (responseBody),
+    defaultMakeLogger,
+    lengthC,
+    lengthCE,
     runConduitRes,
-    (.|), defaultMakeLogger, Response (responseBody)
+    (.|),
   )
 import Crypto.Cipher.AES
 import Crypto.Cipher.Types (BlockCipher, IV, cipherInit, makeIV)
 import Crypto.CryptoConduit (encryptConduit)
 import Crypto.Error
+import Crypto.Init
 import Crypto.KeyEncrptionKey hiding (initCipher, initIV)
 import Crypto.Random
 import Crypto.Types
@@ -37,7 +42,9 @@ import FileSystemServiceClient.FileSystemServiceClient
   )
 import Foundation (App (App, fileSystemServiceClient, keyEncrptionKey), Handler)
 import Models.Inode (Inode (fileSystemId))
+import Models.Path (Path (Path))
 import Network.HTTP.Types (Status (Status))
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist)
 import UnliftIO.Resource
 import Utils.HandlerUtils
 import Yesod.Core
@@ -54,11 +61,8 @@ import Yesod.Core
     sendResponseStatus,
   )
 import Yesod.Core.Handler (sendResponseCreated)
-import Crypto.Init
-import System.Directory (createDirectoryIfMissing)
-import Yesod.Core.Types (loggerPutStr)
+import Yesod.Core.Types (FileInfo (fileSourceRaw), loggerPutStr)
 import Prelude (read)
-import Models.Path (Path(Path))
 
 postUploadR :: Handler Value
 postUploadR = do
@@ -68,7 +72,7 @@ postUploadR = do
   case lookupSingleFile files of
     Nothing -> invalidArgs ["Missing required File."]
     Just file -> do
-      inodeToCreate <- lookupUploadedInode $ Just (Text.unpack $ fileContentType file)
+      inodeToCreate <- lookupUploadedInode file
       case inodeToCreate of
         Nothing -> invalidArgs ["Missing required Header."]
         Just inode -> do
@@ -82,16 +86,24 @@ postUploadR = do
               return responseBody
             _ -> sendInternalError
 
-lookupUploadedInode :: MonadHandler m => Maybe String -> m (Maybe UploadedInode)
-lookupUploadedInode mimeType = do
+lookupUploadedInode :: MonadHandler m => FileInfo -> m (Maybe UploadedInode)
+lookupUploadedInode fileInfo = do
+  let mimeType = Just (Text.unpack $ fileContentType fileInfo)
   relativePath <- lookupHeader $ Data.CaseInsensitive.mk "X-FF-RELATIVE-PATH"
   parentPath <- lookupHeader $ Data.CaseInsensitive.mk "X-FF-PARENT-PATH"
-  size <- lookupHeader $ Data.CaseInsensitive.mk "X-FF-SIZE"
-  return $ UploadedInode <$> (Path . S8.unpack <$> parentPath) <*> (Path . S8.unpack <$> relativePath) <*> (read . S8.unpack <$> size) <*> mimeType
+  size <- getRealFileSize fileInfo
+  return $ UploadedInode <$> (Path . S8.unpack <$> parentPath) <*> (Path . S8.unpack <$> relativePath) <*> Just size <*> mimeType
 
 lookupSingleFile :: [(Text.Text, FileInfo)] -> Maybe FileInfo
 lookupSingleFile [("file", file)] = Just file
 lookupSingleFile _ = Nothing
+
+getRealFileSize :: MonadHandler m => FileInfo -> m Integer
+getRealFileSize fileInfo = do
+  liftIO $
+    runConduitRes $
+      fileSource fileInfo
+        .| lengthCE
 
 -- this creates the encryptionKey by generating it
 makeAllocateResource :: KeyEncryptionKey -> Inode -> IO (AES256, IV AES256)
@@ -99,7 +111,7 @@ makeAllocateResource kek inode = do
   secretKey :: Key AES256 ByteString <- genSecretKey (undefined :: AES256) 32
   let Key keyBytes = secretKey
   ivBytes <- genRandomIV (undefined :: AES256)
-  createDirectoryIfMissing True $ "keys/" <> take 1 (show $ fileSystemId inode )
+  createDirectoryIfMissing True $ "keys/" <> take 1 (show $ fileSystemId inode)
   writeFile ("keys/" <> getPathFromFileId (show $ fileSystemId inode) ++ ".key") (encryptWithKek kek keyBytes)
   writeFile ("keys/" <> getPathFromFileId (show $ fileSystemId inode) ++ ".iv") ivBytes
 
@@ -113,4 +125,3 @@ makeFreeResource fileInfo inode (cipher, iv) = do
     fileSource fileInfo
       .| encryptConduit cipher iv mempty
       .| fileDest
-

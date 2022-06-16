@@ -1,13 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes       #-}
+{-# LANGUAGE QuasiQuotes #-}
+
 module Handler.Home where
 
+import ClassyPrelude hiding (Handler)
 import Foundation
 import Yesod.Core
-import ClassyPrelude hiding (Handler)
-
-
 
 getHomeR :: Handler String
 getHomeR =
-  return "hallo"
+  return "/ Endpoint of the FileHandler Api, you should not have got here."

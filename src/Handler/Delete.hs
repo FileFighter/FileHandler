@@ -23,14 +23,9 @@ deleteDeleteR path = do
   App {fileSystemServiceClient = FileSystemServiceClient {deleteInode = deleteInode}} <- getYesod
   authToken <- lookupAuth
   (responseBody, responseStatusCode, responseStatusMessage) <- liftIO $ deleteInode authToken path
-  case responseStatusCode of
-    200 -> do
-      case fromJSON responseBody of
-        Success inodes -> do
-          liftIO $ mapM_ deleteFile (filter filterFiles inodes) -- Todo: check if file exists
-          return responseBody
-        Error _ -> sendInternalError
-    _ -> sendResponseStatus (Status responseStatusCode responseStatusMessage) responseBody
+  inodes <- handleApiCall responseBody responseStatusCode responseStatusMessage
+  liftIO $ mapM_ deleteFile (filter filterFiles inodes) -- Todo: check if file exists
+  return responseBody
 
 deleteFile :: Inode -> IO ()
 deleteFile file = removeFile $ getPathFromFileId (show $ fileSystemId file)

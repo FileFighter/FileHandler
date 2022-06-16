@@ -37,7 +37,9 @@ import ClassyPrelude
     maybe,
     pack,
     parseTimeM,
+    print,
     pure,
+    putStrLn,
     readFile,
     tshow,
     unpack,
@@ -115,15 +117,17 @@ getDownloadR path = do
         )
         paths
 
-  inodes <- concat <$>
-    mapM
-      ( \(responseBody, responseStatusCode, responseStatusMessage) -> do
-          handleApiCall responseBody responseStatusCode responseStatusMessage
-      )
-      apiResponses
+  inodes <-
+    concat
+      <$> mapM
+        ( \(responseBody, responseStatusCode, responseStatusMessage) -> do
+            handleApiCall responseBody responseStatusCode responseStatusMessage
+        )
+        apiResponses
 
   case inodes of
     [singleInode] -> do
+      liftIO $ print $ size singleInode
       addHeader "Content-Disposition" $ pack ("attachment; filename=\"" ++ Models.Inode.name singleInode ++ "\"")
       addHeader "Content-Length" $ tshow $ size singleInode
       (key, iv) <- liftIO $ getKeyForInode kek singleInode
