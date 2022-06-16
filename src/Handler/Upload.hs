@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -10,6 +12,9 @@ import ClassyPrelude hiding (Handler)
 import ClassyPrelude.Yesod
   ( ConduitT,
     FileInfo (fileContentType),
+    MonadHandler (HandlerSite),
+    RedirectUrl,
+    RenderRoute (Route),
     Response (responseBody),
     defaultMakeLogger,
     lengthC,
@@ -37,7 +42,8 @@ import Data.CaseInsensitive (mk)
 import qualified Data.Text as Text
 import FileStorage (filterFiles, getPathFromFileId, storeFile)
 import FileSystemServiceClient.FileSystemServiceClient
-  ( FileSystemServiceClient (FileSystemServiceClient, createInode),
+  ( FileSystemServiceClient (FileSystemServiceClient, createInode, preflightInode),
+    PreflightInode (PreflightInode),
     UploadedInode (UploadedInode),
   )
 import Foundation (App (App, fileSystemServiceClient, keyEncrptionKey), Handler)
@@ -66,14 +72,15 @@ import Prelude (read)
 
 postUploadR :: Handler Value
 postUploadR = do
-  App {fileSystemServiceClient = FileSystemServiceClient {createInode = createInode}, keyEncrptionKey = kek} <- getYesod
+  App {fileSystemServiceClient = fssc, keyEncrptionKey = kek} <- getYesod
+  let FileSystemServiceClient {createInode = createInode} = fssc
   authToken <- lookupAuth
+  performPreflight fssc authToken
   (_params, files) <- runRequestBody
   case lookupSingleFile files of
     Nothing -> invalidArgs ["Missing required File."]
     Just file -> do
-      inodeToCreate <- lookupUploadedInode file
-      case inodeToCreate of
+      lookupUploadedInode file >>= \case
         Nothing -> invalidArgs ["Missing required Header."]
         Just inode -> do
           (responseBody, responseStatusCode, responseStatusMessage) <- liftIO $ createInode authToken inode
@@ -85,6 +92,22 @@ postUploadR = do
               (_, _) <- allocate alloc (makeFreeResource file singleInode)
               return responseBody
             _ -> sendInternalError
+
+performPreflight :: (MonadHandler m, RedirectUrl (HandlerSite m) (Route App, [(Text, Text)])) => FileSystemServiceClient -> Text -> m ()
+performPreflight FileSystemServiceClient {preflightInode = _preflightInode} authToken = do
+  lookupPreflightInode >>= \case
+    Nothing -> invalidArgs ["Missing required Header: Need X-FF-RELATIVE-PATH and X-FF-PARENT-PATH headers"]
+    Just preflightInode -> do
+      (responseBody, responseStatusCode, responseStatusMessage) <- liftIO $ _preflightInode authToken preflightInode
+      if responseStatusCode /= 200
+        then sendErrorOrRedirect (Status responseStatusCode responseStatusMessage) responseBody
+        else return ()
+
+lookupPreflightInode :: MonadHandler m => m (Maybe PreflightInode)
+lookupPreflightInode = do
+  relativePath <- lookupHeader $ Data.CaseInsensitive.mk "X-FF-RELATIVE-PATH"
+  parentPath <- lookupHeader $ Data.CaseInsensitive.mk "X-FF-PARENT-PATH"
+  return $ PreflightInode <$> (Path . S8.unpack <$> parentPath) <*> (ClassyPrelude.singleton . Path . S8.unpack <$> relativePath)
 
 lookupUploadedInode :: MonadHandler m => FileInfo -> m (Maybe UploadedInode)
 lookupUploadedInode fileInfo = do
