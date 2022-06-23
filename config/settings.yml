@@ -6,9 +6,9 @@ fileSystemServiceSettings:
 
 encryptionPassword: "_env:ENCRYPTION_PASSWORD:changeThis"
 
-database:
-  user: "yesodMongoTemplate"
-  password: "yesodMongoTemplate"
+appDatabaseConf:
+  user: root
+  password: example
   host: "localhost"
-  database: "yesodMongoTemplate"
+  database: filehandler
   connections: 10

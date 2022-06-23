@@ -3,6 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 {-# OPTIONS_GHC -Wno-deprecations #-}
 
 -- |
@@ -13,6 +14,7 @@ import ClassyPrelude.Yesod
   ( ConduitT,
     FileInfo (fileContentType),
     MonadHandler (HandlerSite),
+    PersistStoreWrite (insert),
     RedirectUrl,
     RenderRoute (Route),
     Response (responseBody),
@@ -30,13 +32,14 @@ import Crypto.Init
 import Crypto.KeyEncrptionKey hiding (initCipher, initIV)
 import Crypto.Random
 import Crypto.Types
+import DBModels (EncKey (EncKey), EntityField (EncKeyId))
 import Data.Aeson
   ( Result (Error, Success),
     Value,
     fromJSON,
     object,
   )
-import Data.ByteArray hiding (take)
+import Data.ByteArray hiding (pack, take)
 import qualified Data.ByteString.Char8 as S8
 import Data.CaseInsensitive (mk)
 import qualified Data.Text as Text
@@ -53,6 +56,7 @@ import Network.HTTP.Types (Status (Status))
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist)
 import UnliftIO.Resource
 import Utils.HandlerUtils
+import Yesod (YesodPersist (runDB))
 import Yesod.Core
   ( FileInfo,
     MonadHandler,
@@ -88,7 +92,8 @@ postUploadR = do
           createdInodes <- handleApiCall responseBody responseStatusCode responseStatusMessage
           case filter filterFiles createdInodes of
             [singleInode] -> do
-              let alloc = makeAllocateResource kek singleInode
+              (alloc, encKey') <- liftIO $ makeAllocateResource kek singleInode
+              runDB $ insert encKey'
               (_, _) <- allocate alloc (makeFreeResource file singleInode)
               return responseBody
             _ -> sendInternalError
@@ -129,16 +134,17 @@ getRealFileSize fileInfo = do
         .| lengthCE
 
 -- this creates the encryptionKey by generating it
-makeAllocateResource :: KeyEncryptionKey -> Inode -> IO (AES256, IV AES256)
+makeAllocateResource :: KeyEncryptionKey -> Inode -> IO (IO (AES256, IV AES256), EncKey)
 makeAllocateResource kek inode = do
-  secretKey :: Key AES256 ByteString <- genSecretKey (undefined :: AES256) 32
+  secretKey :: Crypto.Types.Key AES256 ByteString <- genSecretKey (undefined :: AES256) 32
   let Key keyBytes = secretKey
   ivBytes <- genRandomIV (undefined :: AES256)
-  createDirectoryIfMissing True $ "keys/" <> take 1 (show $ fileSystemId inode)
-  writeFile ("keys/" <> getPathFromFileId (show $ fileSystemId inode) ++ ".key") (encryptWithKek kek keyBytes)
-  writeFile ("keys/" <> getPathFromFileId (show $ fileSystemId inode) ++ ".iv") ivBytes
+  --createDirectoryIfMissing True $ "keys/" <> take 1 (show $ fileSystemId inode)
+  --writeFile ("keys/" <> getPathFromFileId (show $ fileSystemId inode) ++ ".key") (encryptWithKek kek keyBytes)
+  --writeFile ("keys/" <> getPathFromFileId (show $ fileSystemId inode) ++ ".iv") ivBytes
+  let encKey' = EncKey (fileSystemId inode) (encryptWithKek kek keyBytes) ivBytes
 
-  return (initCipher secretKey, initIV ivBytes)
+  return (return (initCipher secretKey, initIV ivBytes), encKey')
 
 -- this takes the encryption information and encrypts and moves the file after the response has been send
 makeFreeResource :: FileInfo -> Inode -> (AES256, IV AES256) -> IO ()

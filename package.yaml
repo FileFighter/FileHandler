@@ -34,6 +34,7 @@ dependencies:
   - yesod-persistent
   - persistent-mongoDB
   - mongoDB
+  - template-haskell
 
 # The library contains all of our application code. The executable
 # defined below is just a thin wrapper.

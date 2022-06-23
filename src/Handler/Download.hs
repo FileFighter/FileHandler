@@ -1,9 +1,10 @@
+{-# HLINT ignore "Use join" #-}
+{-# HLINT ignore "Redundant bracket" #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-
-{-# HLINT ignore "Use join" #-}
 
 module Handler.Download where
 
@@ -18,7 +19,7 @@ import ClassyPrelude
     IsMap (lookup),
     IsString (fromString),
     Maybe (..),
-    Monad (return),
+    Monad (return, (>>=)),
     MonadIO (..),
     Monoid (mempty),
     Show (show),
@@ -53,10 +54,14 @@ import ClassyPrelude
   )
 import ClassyPrelude.Yesod
   ( ConduitM,
+    Entity (Entity),
     MonadHandler,
     MonadResource,
+    PersistQueryRead (selectFirst),
+    PersistUniqueRead (getBy),
     TypedContent,
     Value,
+    YesodPersist (runDB),
     addHeader,
     awaitForever,
     getYesod,
@@ -64,6 +69,7 @@ import ClassyPrelude.Yesod
     lookupGetParam,
     respondSource,
     runConduitRes,
+    selectKeys,
     sendChunkBS,
     sendFile,
     sinkFile,
@@ -76,8 +82,10 @@ import Crypto.CryptoConduit (decryptConduit)
 import Crypto.Init
 import Crypto.KeyEncrptionKey (KeyEncryptionKey, decryptWithKek, getKeyForInode)
 import Crypto.Types (Key (Key))
+import DBModels (EncKey (EncKey, encKeyCipherIv, encKeyCipherKey), EntityField (EncKeyFsId, EncKeyId))
 import qualified Data.ByteString.Char8 as S8
 import Data.Text (splitAt, splitOn)
+import Database.Persist (PersistQueryRead (selectKeysRes), (==.))
 import FileStorage (getInodeModifcationTime, getPathFromFileId, retrieveFile)
 import FileSystemServiceClient.FileSystemServiceClient
   ( FileSystemServiceClient
@@ -97,7 +105,7 @@ import qualified Network.HTTP.Types as HttpTypes
 import System.Directory (doesDirectoryExist, removeFile)
 import System.IO.Temp (emptySystemTempFile)
 import UnliftIO.Resource (allocate)
-import Utils.HandlerUtils (handleApiCall, lookupAuth)
+import Utils.HandlerUtils (handleApiCall, lookupAuth, sendInternalError)
 import Utils.ZipFile
 import Yesod.Routes.TH.Types (flatten)
 
@@ -130,11 +138,15 @@ getDownloadR path = do
       liftIO $ print $ size singleInode
       addHeader "Content-Disposition" $ pack ("attachment; filename=\"" ++ Models.Inode.name singleInode ++ "\"")
       addHeader "Content-Length" $ tshow $ size singleInode
-      (key, iv) <- liftIO $ getKeyForInode kek singleInode
-      respondSource (S8.pack $ fromMaybe "application/octet-stream" (mimeType singleInode)) $
-        retrieveFile singleInode
-          .| decryptConduit key iv mempty
-          .| awaitForever sendChunkBS
+      --(key, iv) <- liftIO $ getKeyForInode kek singleInode
+      runDB (selectFirst ([EncKeyFsId ==. (fileSystemId singleInode)]) ([])) >>= \case
+        Nothing -> sendInternalError
+        Just (Entity _ encKey) -> do
+          let key' = initCipher $ Key (decryptWithKek kek $ encKeyCipherKey encKey) :: AES256
+          respondSource (S8.pack $ fromMaybe "application/octet-stream" (mimeType singleInode)) $
+            retrieveFile singleInode
+              .| decryptConduit (key') (initIV $ encKeyCipherIv encKey) mempty
+              .| awaitForever sendChunkBS
     multipleInodes -> do
       let archiveName = fromMaybe "Files" Nothing
       addHeader "Content-Disposition" ("attachment; filename=\"" ++ decodeUtf8 archiveName ++ ".zip" ++ "\"")

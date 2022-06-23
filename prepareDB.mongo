@@ -1,0 +1,11 @@
+
+db.createUser(
+	{
+		user: "root",
+		pwd: "example",  // or cleartext password
+		roles: [
+			{ role: "readWrite", db: "filehandler" }
+		]
+	}
+	)
+
