@@ -45,6 +45,8 @@ import ClassyPrelude
     tshow,
     unpack,
     void,
+    zip,
+    zipWith,
     ($),
     (++),
     (.),
@@ -142,6 +144,7 @@ getDownloadR path = do
       runDB (selectFirst ([EncKeyFsId ==. (fileSystemId singleInode)]) ([])) >>= \case
         Nothing -> sendInternalError
         Just (Entity _ encKey) -> do
+          liftIO $ print encKey
           let key' = initCipher $ Key (decryptWithKek kek $ encKeyCipherKey encKey) :: AES256
           respondSource (S8.pack $ fromMaybe "application/octet-stream" (mimeType singleInode)) $
             retrieveFile singleInode
@@ -150,8 +153,15 @@ getDownloadR path = do
     multipleInodes -> do
       let archiveName = fromMaybe "Files" Nothing
       addHeader "Content-Disposition" ("attachment; filename=\"" ++ decodeUtf8 archiveName ++ ".zip" ++ "\"")
-      (_, tempFile) <- allocate (makeAllocateResource kek multipleInodes) freeResource
+      mayBeEncKeys <- mapM (\singleInode -> runDB $ selectFirst ([EncKeyFsId ==. (fileSystemId singleInode)]) ([])) multipleInodes
+      encKeys <- mapM justOrInternalError mayBeEncKeys
+      let encKeysWithInodes = zip multipleInodes encKeys
+      (_, tempFile) <- allocate (makeAllocateResource kek encKeysWithInodes) freeResource
       sendFile "application/zip" tempFile
+
+justOrInternalError :: MonadHandler m => Maybe a -> m a
+justOrInternalError (Just a) = return a
+justOrInternalError Nothing = sendInternalError
 
 lookupPaths :: MonadHandler m => [Text] -> m [Path]
 lookupPaths parentPath = do
@@ -160,15 +170,21 @@ lookupPaths parentPath = do
     Just inodeNames -> pure $ map (\name -> fromMultiPiece $ parentPath <> [name]) inodeNames
     Nothing -> pure [fromMultiPiece parentPath]
 
-makeAllocateResource :: KeyEncryptionKey -> [Models.Inode.Inode] -> IO FilePath
-makeAllocateResource kek inodes = do
+makeAllocateResource :: KeyEncryptionKey -> [(Inode, Entity EncKey)] -> IO FilePath
+makeAllocateResource kek encKeyEntites = do
   path <- emptySystemTempFile "FileFighterFileHandler.zip"
-  inodesWithKeys <- mapM (\inode -> fmap (inode,) (getKeyForInode kek inode)) inodes
+  let inodesWithKeys = map (\(inode, encKey) -> (inode, initEncKey encKey kek)) encKeyEntites
   createZip inodesWithKeys path
   return path
 
 freeResource :: FilePath -> IO ()
 freeResource = removeFile
+
+initEncKey :: Entity EncKey -> KeyEncryptionKey -> (AES256, IV AES256)
+initEncKey (Entity _ encKey) kek = do
+  let key = initCipher $ Key (decryptWithKek kek $ encKeyCipherKey encKey)
+  let iv = (initIV $ encKeyCipherIv encKey)
+  (key, iv)
 
 lookupRequiredInodeIds :: MonadHandler m => m String
 lookupRequiredInodeIds = do

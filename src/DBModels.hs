@@ -28,6 +28,7 @@ let mongoSettings = mkPersistSettings (ConT ''MongoContext)
       [mkPersist mongoSettings]
       [persistLowerCase|
 EncKey
+    Id String
     fsId String
     cipherKey ByteString
     cipherIv ByteString

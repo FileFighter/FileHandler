@@ -9,12 +9,31 @@
 -- |
 module Handler.Upload where
 
-import ClassyPrelude hiding (Handler)
+import ClassyPrelude
+  ( Applicative ((<*>)),
+    ByteString,
+    Eq ((/=)),
+    IO,
+    Integer,
+    IsSequence (filter),
+    Maybe (..),
+    Monad (return, (>>=)),
+    MonadIO (liftIO),
+    Monoid (mempty),
+    Show (show),
+    Text,
+    print,
+    singleton,
+    undefined,
+    ($),
+    (.),
+    (<$>),
+  )
 import ClassyPrelude.Yesod
   ( ConduitT,
     FileInfo (fileContentType),
     MonadHandler (HandlerSite),
-    PersistStoreWrite (insert),
+    PersistStoreWrite (insertKey),
     RedirectUrl,
     RenderRoute (Route),
     Response (responseBody),
@@ -32,7 +51,7 @@ import Crypto.Init
 import Crypto.KeyEncrptionKey hiding (initCipher, initIV)
 import Crypto.Random
 import Crypto.Types
-import DBModels (EncKey (EncKey), EntityField (EncKeyId))
+import DBModels (EncKey (EncKey), EntityField (EncKeyId), Key (EncKeyKey))
 import Data.Aeson
   ( Result (Error, Success),
     Value,
@@ -93,7 +112,7 @@ postUploadR = do
           case filter filterFiles createdInodes of
             [singleInode] -> do
               (alloc, encKey') <- liftIO $ makeAllocateResource kek singleInode
-              runDB $ insert encKey'
+              runDB $ insertKey (EncKeyKey "dsa") encKey'
               (_, _) <- allocate alloc (makeFreeResource file singleInode)
               return responseBody
             _ -> sendInternalError
