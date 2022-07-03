@@ -35,11 +35,23 @@ dependencies:
   - persistent-mongoDB
   - mongoDB
   - template-haskell
+  - fast-logger
 
 # The library contains all of our application code. The executable
 # defined below is just a thin wrapper.
 library:
   source-dirs: src
+
+# Test suite
+tests:
+  yesodMongoTemplate-test:
+    main: Spec.hs
+    source-dirs: test
+    ghc-options: -Wall
+    dependencies:
+      - FileHandlerYesod
+      - hspec >=2.0.0
+      - yesod-test
 
 # Runnable executable for our application
 executables:

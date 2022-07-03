@@ -6,6 +6,8 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
+{-# HLINT ignore "Unused LANGUAGE pragma" #-}
+
 module Handler.Download where
 
 import ClassyPrelude
@@ -61,6 +63,7 @@ import ClassyPrelude.Yesod
     MonadResource,
     PersistQueryRead (selectFirst),
     PersistUniqueRead (getBy),
+    ToJSON (toJSON),
     TypedContent,
     Value,
     YesodPersist (runDB),
@@ -75,6 +78,7 @@ import ClassyPrelude.Yesod
     sendChunkBS,
     sendFile,
     sinkFile,
+    status400,
     yield,
     (.|),
   )
@@ -97,17 +101,20 @@ import FileSystemServiceClient.FileSystemServiceClient
     UploadedInode (parentPath),
   )
 import Foundation (App (App, fileSystemServiceClient, keyEncrptionKey), Handler)
+import KeyStorage (getEncKeyOrInternalError)
 import Models.Inode
   ( Inode (lastUpdated, mimeType, name, path, size),
     fileSystemId,
+    getFirstPathPiece,
   )
 import Models.Path (Path, fromMultiPiece)
+import Models.RestApiStatus (RestApiStatus (RestApiStatus))
 import Network.HTTP.Req (responseStatusMessage)
 import qualified Network.HTTP.Types as HttpTypes
 import System.Directory (doesDirectoryExist, removeFile)
 import System.IO.Temp (emptySystemTempFile)
 import UnliftIO.Resource (allocate)
-import Utils.HandlerUtils (handleApiCall, lookupAuth, sendInternalError)
+import Utils.HandlerUtils (handleApiCall, handleApiCall', lookupAuth, sendErrorOrRedirect, sendInternalError)
 import Utils.ZipFile
 import Yesod.Routes.TH.Types (flatten)
 
@@ -128,35 +135,24 @@ getDownloadR path = do
         paths
 
   inodes <-
-    concat
-      <$> mapM
-        ( \(responseBody, responseStatusCode, responseStatusMessage) -> do
-            handleApiCall responseBody responseStatusCode responseStatusMessage
-        )
-        apiResponses
+    concat <$> mapM handleApiCall' apiResponses
 
   case inodes of
+    [] -> sendErrorOrRedirect status400 $ toJSON $ RestApiStatus "Can not download a empty folder." "Bad Request"
     [singleInode] -> do
       liftIO $ print $ size singleInode
       addHeader "Content-Disposition" $ pack ("attachment; filename=\"" ++ Models.Inode.name singleInode ++ "\"")
       addHeader "Content-Length" $ tshow $ size singleInode
-      --(key, iv) <- liftIO $ getKeyForInode kek singleInode
-      runDB (selectFirst ([EncKeyFsId ==. (fileSystemId singleInode)]) ([])) >>= \case
-        Nothing -> sendInternalError
-        Just (Entity _ encKey) -> do
-          liftIO $ print encKey
-          let key' = initCipher $ Key (decryptWithKek kek $ encKeyCipherKey encKey) :: AES256
-          respondSource (S8.pack $ fromMaybe "application/octet-stream" (mimeType singleInode)) $
-            retrieveFile singleInode
-              .| decryptConduit (key') (initIV $ encKeyCipherIv encKey) mempty
-              .| awaitForever sendChunkBS
-    multipleInodes -> do
-      let archiveName = fromMaybe "Files" Nothing
-      addHeader "Content-Disposition" ("attachment; filename=\"" ++ decodeUtf8 archiveName ++ ".zip" ++ "\"")
-      mayBeEncKeys <- mapM (\singleInode -> runDB $ selectFirst ([EncKeyFsId ==. (fileSystemId singleInode)]) ([])) multipleInodes
-      encKeys <- mapM justOrInternalError mayBeEncKeys
-      let encKeysWithInodes = zip multipleInodes encKeys
-      (_, tempFile) <- allocate (makeAllocateResource kek encKeysWithInodes) freeResource
+      (inode, (key, iv)) <- runDB $ getEncKeyOrInternalError singleInode kek
+      respondSource (S8.pack $ fromMaybe "application/octet-stream" (mimeType singleInode)) $
+        retrieveFile singleInode
+          .| decryptConduit key iv mempty
+          .| awaitForever sendChunkBS
+    first : moreInodes -> do
+      let archiveName = getFirstPathPiece first
+      addHeader "Content-Disposition" ("attachment; filename=\"" ++ pack archiveName ++ ".zip" ++ "\"")
+      encKeysWithInodes <- mapM (\inode -> runDB $ getEncKeyOrInternalError inode kek) (first : moreInodes)
+      (_, tempFile) <- allocate (makeAllocateResource encKeysWithInodes) freeResource
       sendFile "application/zip" tempFile
 
 justOrInternalError :: MonadHandler m => Maybe a -> m a
@@ -170,21 +166,14 @@ lookupPaths parentPath = do
     Just inodeNames -> pure $ map (\name -> fromMultiPiece $ parentPath <> [name]) inodeNames
     Nothing -> pure [fromMultiPiece parentPath]
 
-makeAllocateResource :: KeyEncryptionKey -> [(Inode, Entity EncKey)] -> IO FilePath
-makeAllocateResource kek encKeyEntites = do
+makeAllocateResource :: [(Inode, (AES256, IV AES256))] -> IO FilePath
+makeAllocateResource inodesWithKeys = do
   path <- emptySystemTempFile "FileFighterFileHandler.zip"
-  let inodesWithKeys = map (\(inode, encKey) -> (inode, initEncKey encKey kek)) encKeyEntites
   createZip inodesWithKeys path
   return path
 
 freeResource :: FilePath -> IO ()
 freeResource = removeFile
-
-initEncKey :: Entity EncKey -> KeyEncryptionKey -> (AES256, IV AES256)
-initEncKey (Entity _ encKey) kek = do
-  let key = initCipher $ Key (decryptWithKek kek $ encKeyCipherKey encKey)
-  let iv = (initIV $ encKeyCipherIv encKey)
-  (key, iv)
 
 lookupRequiredInodeIds :: MonadHandler m => m String
 lookupRequiredInodeIds = do

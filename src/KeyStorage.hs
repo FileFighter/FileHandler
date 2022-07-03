@@ -17,9 +17,9 @@ import Crypto.Cipher.Types (IV)
 import Crypto.Init (initCipher, initIV)
 import Crypto.KeyEncrptionKey (KeyEncryptionKey, decryptWithKek)
 import Crypto.Types (Key (Key))
-import DBModels (EncKey (EncKey, encKeyCipherIv, encKeyCipherKey), EntityField (EncKeyFsId), Key (EncKeyKey))
+import DBModels (EncKey (EncKey, encKeyCipherIv, encKeyCipherKey), Key (EncKeyKey))
 import Database.Persist (Entity, PersistRecordBackend, PersistStoreWrite (insertKey))
-import Database.Persist.MongoDB (Entity (Entity), MongoContext, PersistQueryRead (selectFirst), docToEntityEither, (==.))
+import Database.Persist.MongoDB (Entity (Entity), MongoContext, PersistQueryRead (selectFirst), PersistStoreWrite (delete), docToEntityEither, (==.))
 import Foundation (App)
 import Models.Inode (Inode (Inode, fileSystemId))
 import Utils.HandlerUtils (sendInternalError)
@@ -32,23 +32,31 @@ import Yesod.Core.Types (HandlerContents (HCError))
 --return ()
 
 getEncKeyOrInternalError ::
-  (MonadHandler m, PersistRecordBackend (Entity EncKey) MongoContext, PersistQueryRead MongoContext) =>
+  (MonadHandler m, PersistRecordBackend EncKey MongoContext, PersistQueryRead MongoContext) =>
   Inode ->
   KeyEncryptionKey ->
-  ReaderT MongoContext m ((AES256, IV AES256))
+  ReaderT MongoContext m (Inode, (AES256, IV AES256))
 getEncKeyOrInternalError inode kek = do
-  mres :: (Maybe (Entity EncKey)) <- selectFirst [EncKeyFsId ==. fileSystemId inode] []
+  --mres :: (Maybe (Entity EncKey)) <- selectFirst [EncKeyFsId ==. fileSystemId inode] []
+  mres :: (Maybe (EncKey)) <- get $ EncKeyKey (fileSystemId inode)
   case mres of
     Nothing -> sendInternalError
-    Just (Entity _ encKey) -> do
+    Just (encKey) -> do
       let key = initCipher $ Key (decryptWithKek kek $ encKeyCipherKey encKey)
       let iv = (initIV $ encKeyCipherIv encKey)
-      return (key, iv)
+      return (inode, (key, iv))
 
 storeEncKey ::
-  (MonadHandler m, PersistRecordBackend (Entity EncKey) MongoContext, PersistQueryRead MongoContext) =>
+  (MonadHandler m, PersistRecordBackend EncKey MongoContext, PersistQueryRead MongoContext) =>
   Inode ->
   EncKey ->
   ReaderT MongoContext m ()
 storeEncKey inode encKey = do
   insertKey (EncKeyKey (fileSystemId inode)) encKey
+
+deleteEncKey ::
+  (MonadHandler m, PersistRecordBackend EncKey MongoContext, PersistQueryRead MongoContext) =>
+  Inode ->
+  ReaderT MongoContext m ()
+deleteEncKey inode = do
+  delete (EncKeyKey $ fileSystemId inode)

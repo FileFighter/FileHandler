@@ -69,6 +69,7 @@ import FileSystemServiceClient.FileSystemServiceClient
     UploadedInode (UploadedInode),
   )
 import Foundation (App (App, fileSystemServiceClient, keyEncrptionKey), Handler)
+import KeyStorage (getEncKeyOrInternalError, storeEncKey)
 import Models.Inode (Inode (fileSystemId))
 import Models.Path (Path (Path))
 import Network.HTTP.Types (Status (Status))
@@ -112,7 +113,7 @@ postUploadR = do
           case filter filterFiles createdInodes of
             [singleInode] -> do
               (alloc, encKey') <- liftIO $ makeAllocateResource kek singleInode
-              runDB $ insertKey (EncKeyKey "dsa") encKey'
+              runDB $ storeEncKey singleInode encKey'
               (_, _) <- allocate alloc (makeFreeResource file singleInode)
               return responseBody
             _ -> sendInternalError
@@ -158,11 +159,7 @@ makeAllocateResource kek inode = do
   secretKey :: Crypto.Types.Key AES256 ByteString <- genSecretKey (undefined :: AES256) 32
   let Key keyBytes = secretKey
   ivBytes <- genRandomIV (undefined :: AES256)
-  --createDirectoryIfMissing True $ "keys/" <> take 1 (show $ fileSystemId inode)
-  --writeFile ("keys/" <> getPathFromFileId (show $ fileSystemId inode) ++ ".key") (encryptWithKek kek keyBytes)
-  --writeFile ("keys/" <> getPathFromFileId (show $ fileSystemId inode) ++ ".iv") ivBytes
   let encKey' = EncKey (fileSystemId inode) (encryptWithKek kek keyBytes) ivBytes
-
   return (return (initCipher secretKey, initIV ivBytes), encKey')
 
 -- this takes the encryption information and encrypts and moves the file after the response has been send

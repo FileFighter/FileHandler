@@ -24,13 +24,15 @@ import Yesod.Core
     mkYesodData,
     parseRoutesFile,
   )
+import Yesod.Core.Types
 import Yesod.Persist.Core (YesodPersist (..))
 
 data App = App
   { appSettings :: AppSettings,
     appConnPool :: ConnectionPool,
     fileSystemServiceClient :: FileSystemServiceClient,
-    keyEncrptionKey :: KeyEncryptionKey
+    keyEncrptionKey :: KeyEncryptionKey,
+    appLogger :: Logger
   }
 
 mkYesodData "App" $(parseRoutesFile "routes.yesodroutes")

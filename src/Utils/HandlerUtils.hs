@@ -7,40 +7,49 @@
 module Utils.HandlerUtils where
 
 import ClassyPrelude
-    ( otherwise,
-      ($),
-      Monad(return, (>>=)),
-      Ord((<), (<=)),
-      Bool(..),
-      Int,
-      (<$>),
-      ByteString,
-      Text,
-      (&&),
-      maybe,
-      (.),
-      elem,
-      pack,
-      Utf8(decodeUtf8), MonadIO (liftIO), print, putStr, putStrLn )
+  ( Bool (..),
+    ByteString,
+    Int,
+    Monad (return, (>>=)),
+    MonadIO (liftIO),
+    Ord ((<), (<=)),
+    Text,
+    Utf8 (decodeUtf8),
+    elem,
+    maybe,
+    otherwise,
+    pack,
+    print,
+    putStr,
+    putStrLn,
+    ($),
+    (&&),
+    (.),
+    (<$>),
+  )
 import Data.Aeson
 import Foundation
 import Models.RestApiStatus
 import Network.HTTP.Types
 import Network.Wai (rawPathInfo)
 import Yesod
-    ( sendResponseStatus,
-      notAuthenticated,
-      MonadHandler(HandlerSite),
-      getRequest,
-      lookupCookie,
-      lookupGetParam,
-      redirect,
-      RedirectUrl,
-      ContentType,
-      YesodRequest(reqWaiRequest, reqAccept) )
+  ( ContentType,
+    MonadHandler (HandlerSite),
+    RedirectUrl,
+    YesodRequest (reqAccept, reqWaiRequest),
+    getRequest,
+    lookupCookie,
+    lookupGetParam,
+    notAuthenticated,
+    redirect,
+    sendResponseStatus,
+  )
 
 sendInternalError :: MonadHandler m => m a
 sendInternalError = sendResponseStatus (Status 500 "Internal Server Error.") $ toJSON $ RestApiStatus "Internal Server Error" "500"
+
+handleApiCall' :: (MonadHandler m, FromJSON a, RedirectUrl (HandlerSite m) (Route App, [(Text, Text)])) => (Value, Int, ByteString) -> m a
+handleApiCall' (body, statusCode, statusMessage) = handleApiCall body statusCode statusMessage
 
 handleApiCall :: (MonadHandler m, FromJSON a, RedirectUrl (HandlerSite m) (Route App, [(Text, Text)])) => Value -> Int -> ByteString -> m a
 handleApiCall body statusCode statusMessage
@@ -49,14 +58,14 @@ handleApiCall body statusCode statusMessage
       Success value ->
         return value
       Error e -> do
-        liftIO $ print  e
+        liftIO $ print e
         sendInternalError
   | 400 <= statusCode && statusCode < 500 = do
-      liftIO $ print "4XX domain error"
-      sendErrorOrRedirect (Status statusCode statusMessage) body --sendResponseStatus (Status statusCode statusMessage) body
+    liftIO $ print "4XX domain error"
+    sendErrorOrRedirect (Status statusCode statusMessage) body --sendResponseStatus (Status statusCode statusMessage) body
   | otherwise = do
-        liftIO $ print body
-        sendInternalError
+    liftIO $ print body
+    sendInternalError
 
 sendErrorOrRedirect :: (MonadHandler m, RedirectUrl (HandlerSite m) (Route App, [(Text, Text)])) => Status -> Value -> m a
 sendErrorOrRedirect status body =

@@ -2,18 +2,25 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Application where
+module Application
+  ( appMain,
+    makeFoundation,
+    makeLogWare,
+  )
+where
 
 import ClassyPrelude
   ( Bool (False, True),
+    Eq ((==)),
     IO,
     Maybe (Just, Nothing),
-    Monad (return),
+    Monad (return, (>>=)),
     Num ((*)),
     const,
     ($),
+    (||),
   )
-import ClassyPrelude.Yesod (PersistConfig (createPoolConfig))
+import ClassyPrelude.Yesod (Default (def), PersistConfig (createPoolConfig))
 import Crypto.KeyEncrptionKey (createKeyEncrptionKey, getOrCreateKekIV)
 import Data.Yaml.Config (loadYamlSettingsArgs, useEnv)
 import FileSystemServiceClient.FileSystemServiceClient (makeFileSystemServiceClient)
@@ -37,7 +44,7 @@ import Handler.Health (getHealthR)
 import Handler.Home (getHomeR)
 import Handler.Preview (getPreviewR)
 import Handler.Upload (postUploadR)
-import Network.Wai ()
+import Network.Wai (Middleware)
 import Network.Wai.Handler.Warp (run)
 import Network.Wai.Middleware.Cors
   ( CorsResourcePolicy
@@ -53,12 +60,20 @@ import Network.Wai.Middleware.Cors
       ),
     cors,
   )
+import Network.Wai.Middleware.RequestLogger (Destination (Logger), IPAddrSource (FromFallback, FromSocket), OutputFormat (Apache, Detailed), RequestLoggerSettings (destination, outputFormat), mkRequestLogger)
 import Network.Wai.Parse ()
 import Settings
-  ( AppSettings (appDatabaseConf, encryptionPassword, fileSystemServiceSettings),
+  ( AppSettings (appDatabaseConf, appProfile, encryptionPassword, fileSystemServiceSettings),
     configSettingsYmlValue,
   )
+import System.Log.FastLogger
+  ( defaultBufSize,
+    newStdoutLoggerSet,
+    toLogStr,
+  )
 import Yesod.Core (mkYesodDispatch, toWaiApp)
+import Yesod.Core.Types (Logger (loggerSet))
+import Yesod.Default.Config2 (makeYesodLogger)
 
 mkYesodDispatch "App" resourcesApp
 
@@ -69,13 +84,33 @@ makeFoundation appSettings = do
   iv <- getOrCreateKekIV
   let keyEncrptionKey = createKeyEncrptionKey (encryptionPassword appSettings) iv
   appConnPool <- createPoolConfig $ appDatabaseConf appSettings
+  appLogger <- newStdoutLoggerSet defaultBufSize >>= makeYesodLogger
 
   return
     App
       { appSettings = appSettings,
         appConnPool = appConnPool,
         fileSystemServiceClient = fssC,
-        keyEncrptionKey = keyEncrptionKey
+        keyEncrptionKey = keyEncrptionKey,
+        appLogger = appLogger
+      }
+
+makeLogWare :: App -> IO Middleware
+makeLogWare foundation = do
+  let profile = appProfile $ appSettings foundation
+  let nonProd = "stage" == profile || "dev" == profile
+  mkRequestLogger
+    def
+      { outputFormat =
+          if nonProd
+            then Detailed True
+            else
+              Apache
+                ( if nonProd
+                    then FromFallback
+                    else FromSocket
+                ),
+        destination = Logger $ loggerSet $ appLogger foundation
       }
 
 appMain :: IO ()

@@ -1,11 +1,16 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
+{-# HLINT ignore "Redundant bracket" #-}
 
 module Models.Inode where
 
 import ClassyPrelude
 import Data.Aeson
-import Models.User
+import Data.Text as T (pack, splitOn, unpack)
 import Models.Path (Path)
+import Models.User
 
 data Inode = Inode
   { fileSystemId :: String,
@@ -30,3 +35,11 @@ instance FromJSON Inode where
         { fieldLabelModifier = typeFieldRename,
           omitNothingFields = True
         }
+
+getFirstPathPiece :: Inode -> String
+getFirstPathPiece inode = do
+  let inodePath = path inode
+  let path = T.pack $ fromMaybe (name inode) (inodePath)
+  case (filter (/= "") $ splitOn "/" path) of
+    [] -> name inode
+    firstPathPiece : rest -> T.unpack firstPathPiece
