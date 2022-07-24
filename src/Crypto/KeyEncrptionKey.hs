@@ -11,14 +11,14 @@ import Crypto.Cipher.AES
 import Crypto.Cipher.Types
 import Crypto.Data.Padding
 import Crypto.Error
+import Crypto.Init (initCipher, initIV)
 import Crypto.KDF.BCryptPBKDF (Parameters (Parameters), generate)
-import Crypto.Random (genRandomIV)
+import Crypto.RandomGen (genRandomIV)
 import Crypto.Types (Key (Key))
 import Data.ByteArray
-import System.Directory (doesFileExist)
-import Models.Inode
 import FileStorage (getPathFromFileId)
-import Crypto.Init (initCipher, initIV)
+import Models.Inode
+import System.Directory (doesFileExist)
 
 kekSalt :: ByteString
 kekSalt = "FileFighterFileHandlerWithSomeSalt"
@@ -27,7 +27,6 @@ data KeyEncryptionKey = KeyEncryptionKey
   { blockCipher :: AES256,
     initialIV :: IV AES256
   }
-
 
 -- This should use the database later
 getOrCreateKekIV :: IO ByteString
@@ -48,7 +47,7 @@ createKeyEncrptionKey password ivBytes = do
     Just initIV -> do
       let secretKey :: Key AES256 ByteString = Key $ generateKeyfromPassword (fromString password)
       KeyEncryptionKey
-        { blockCipher = initCipher secretKey ,
+        { blockCipher = initCipher secretKey,
           initialIV = initIV
         }
 
@@ -68,9 +67,7 @@ decryptWithKek r@KeyEncryptionKey {blockCipher = cipher, initialIV = iv} message
     decrypted
     (unpad (PKCS7 (blockSize cipher)) decrypted)
 
-
-
-getKeyForInode ::  KeyEncryptionKey -> Inode ->  IO (AES256, IV AES256)
+getKeyForInode :: KeyEncryptionKey -> Inode -> IO (AES256, IV AES256)
 getKeyForInode kek inode = do
   key <- decryptWithKek kek <$> readFile ("keys/" <> getPathFromFileId (show $ fileSystemId inode) ++ ".key")
   iv <- readFile ("keys/" <> getPathFromFileId (show $ fileSystemId inode) ++ ".iv")

@@ -88,7 +88,7 @@ import Crypto.CryptoConduit (decryptConduit)
 import Crypto.Init
 import Crypto.KeyEncrptionKey (KeyEncryptionKey, decryptWithKek, getKeyForInode)
 import Crypto.Types (Key (Key))
-import DBModels (EncKey (EncKey, encKeyCipherIv, encKeyCipherKey), EntityField (EncKeyFsId, EncKeyId))
+import DBModels (EncKey (EncKey, encKeyCipherIv, encKeyCipherKey))
 import qualified Data.ByteString.Char8 as S8
 import Data.Text (splitAt, splitOn)
 import Database.Persist (PersistQueryRead (selectKeysRes), (==.))
@@ -141,9 +141,9 @@ getDownloadR path = do
     [] -> sendErrorOrRedirect status400 $ toJSON $ RestApiStatus "Can not download a empty folder." "Bad Request"
     [singleInode] -> do
       liftIO $ print $ size singleInode
+      (inode, (key, iv)) <- runDB $ getEncKeyOrInternalError singleInode kek
       addHeader "Content-Disposition" $ pack ("attachment; filename=\"" ++ Models.Inode.name singleInode ++ "\"")
       addHeader "Content-Length" $ tshow $ size singleInode
-      (inode, (key, iv)) <- runDB $ getEncKeyOrInternalError singleInode kek
       respondSource (S8.pack $ fromMaybe "application/octet-stream" (mimeType singleInode)) $
         retrieveFile singleInode
           .| decryptConduit key iv mempty

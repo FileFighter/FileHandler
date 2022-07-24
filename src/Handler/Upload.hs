@@ -49,7 +49,7 @@ import Crypto.CryptoConduit (encryptConduit)
 import Crypto.Error
 import Crypto.Init
 import Crypto.KeyEncrptionKey hiding (initCipher, initIV)
-import Crypto.Random
+import Crypto.RandomGen
 import Crypto.Types
 import DBModels (EncKey (EncKey), EntityField (EncKeyId), Key (EncKeyKey))
 import Data.Aeson
@@ -159,7 +159,7 @@ makeAllocateResource kek inode = do
   secretKey :: Crypto.Types.Key AES256 ByteString <- genSecretKey (undefined :: AES256) 32
   let Key keyBytes = secretKey
   ivBytes <- genRandomIV (undefined :: AES256)
-  let encKey' = EncKey (fileSystemId inode) (encryptWithKek kek keyBytes) ivBytes
+  let encKey' = EncKey (encryptWithKek kek keyBytes) ivBytes
   return (return (initCipher secretKey, initIV ivBytes), encKey')
 
 -- this takes the encryption information and encrypts and moves the file after the response has been send

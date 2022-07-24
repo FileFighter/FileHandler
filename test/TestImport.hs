@@ -51,7 +51,7 @@ withApp = before $ do
       []
       useEnv
   foundation <- makeFoundation settings
-  wipeDB foundation
+  --wipeDB foundation
   logWare <- liftIO $ makeLogWare foundation
   return (foundation, logWare)
 

@@ -11,6 +11,4 @@ import Yesod.Core
 
 getHomeR :: Handler String
 getHomeR = do
-  let encKey' = EncKey "" ""
-  --runDB $ insertKey (EncKeyKey' "das") encKey'
   return "root Endpoint of the FileHandler Api, you should not have got here."

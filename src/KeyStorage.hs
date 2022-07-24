@@ -25,19 +25,12 @@ import Models.Inode (Inode (Inode, fileSystemId))
 import Utils.HandlerUtils (sendInternalError)
 import Yesod.Core.Types (HandlerContents (HCError))
 
---storeKey :: (MonadHandler m, YesodPersist App, PersistStoreWrite (YesodPersistBackend App), PersistStoreWrite (YesodPersistBackend App), YesodPersist App) => m EncKey
---storeKey :: (MonadHandler m) => ReaderT MongoContext Handler App -> Handler a
---storeKey = do
---runDB $ get ""
---return ()
-
 getEncKeyOrInternalError ::
   (MonadHandler m, PersistRecordBackend EncKey MongoContext, PersistQueryRead MongoContext) =>
   Inode ->
   KeyEncryptionKey ->
   ReaderT MongoContext m (Inode, (AES256, IV AES256))
 getEncKeyOrInternalError inode kek = do
-  --mres :: (Maybe (Entity EncKey)) <- selectFirst [EncKeyFsId ==. fileSystemId inode] []
   mres :: (Maybe (EncKey)) <- get $ EncKeyKey (fileSystemId inode)
   case mres of
     Nothing -> sendInternalError
@@ -47,12 +40,15 @@ getEncKeyOrInternalError inode kek = do
       return (inode, (key, iv))
 
 storeEncKey ::
-  (MonadHandler m, PersistRecordBackend EncKey MongoContext, PersistQueryRead MongoContext) =>
+  (MonadIO m, PersistRecordBackend EncKey MongoContext) =>
   Inode ->
   EncKey ->
   ReaderT MongoContext m ()
 storeEncKey inode encKey = do
-  insertKey (EncKeyKey (fileSystemId inode)) encKey
+  let dbKey = EncKeyKey (fileSystemId inode)
+  insertKey dbKey encKey
+  get dbKey
+  return ()
 
 deleteEncKey ::
   (MonadHandler m, PersistRecordBackend EncKey MongoContext, PersistQueryRead MongoContext) =>
