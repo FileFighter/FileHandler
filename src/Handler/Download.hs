@@ -1,3 +1,4 @@
+{-# LANGUAGE GADTs #-}
 {-# HLINT ignore "Use join" #-}
 {-# HLINT ignore "Redundant bracket" #-}
 {-# LANGUAGE LambdaCase #-}
@@ -32,6 +33,7 @@ import ClassyPrelude
     Utf8 (decodeUtf8),
     concat,
     concatMap,
+    const,
     defaultTimeLocale,
     fromMaybe,
     id,
@@ -58,11 +60,13 @@ import ClassyPrelude
   )
 import ClassyPrelude.Yesod
   ( ConduitM,
+    ConduitT,
     Entity (Entity),
     MonadHandler,
     MonadResource,
     PersistQueryRead (selectFirst),
     PersistUniqueRead (getBy),
+    ResourceT,
     ToJSON (toJSON),
     TypedContent,
     Value,
@@ -73,12 +77,14 @@ import ClassyPrelude.Yesod
     invalidArgs,
     lookupGetParam,
     respondSource,
+    runConduit,
     runConduitRes,
     selectKeys,
     sendChunkBS,
     sendFile,
     sinkFile,
     status400,
+    takeWhileCE,
     yield,
     (.|),
   )
@@ -101,7 +107,7 @@ import FileSystemServiceClient.FileSystemServiceClient
     UploadedInode (parentPath),
   )
 import Foundation (App (App, fileSystemServiceClient, keyEncrptionKey), Handler)
-import KeyStorage (getEncKeyOrInternalError)
+import KeyStorage (getDecryptionFunctionMaybeFromDB, getEncKeyOrInternalError)
 import Models.Inode
   ( Inode (lastUpdated, mimeType, name, path, size),
     fileSystemId,
@@ -113,7 +119,7 @@ import Network.HTTP.Req (responseStatusMessage)
 import qualified Network.HTTP.Types as HttpTypes
 import System.Directory (doesDirectoryExist, removeFile)
 import System.IO.Temp (emptySystemTempFile)
-import UnliftIO.Resource (allocate)
+import UnliftIO.Resource (allocate, runResourceT)
 import Utils.HandlerUtils (handleApiCall, handleApiCall', lookupAuth, sendErrorOrRedirect, sendInternalError)
 import Utils.ZipFile
 import Yesod.Routes.TH.Types (flatten)
@@ -141,18 +147,21 @@ getDownloadR path = do
     [] -> sendErrorOrRedirect status400 $ toJSON $ RestApiStatus "Can not download a empty folder." "Bad Request"
     [singleInode] -> do
       liftIO $ print $ size singleInode
-      (inode, (key, iv)) <- runDB $ getEncKeyOrInternalError singleInode kek
+      (inode, decFunc) <- getDecryptionFunctionMaybeFromDB singleInode kek
+
       addHeader "Content-Disposition" $ pack ("attachment; filename=\"" ++ Models.Inode.name singleInode ++ "\"")
       addHeader "Content-Length" $ tshow $ size singleInode
       respondSource (S8.pack $ fromMaybe "application/octet-stream" (mimeType singleInode)) $
         retrieveFile singleInode
-          .| decryptConduit key iv mempty
+          .| decFunc
           .| awaitForever sendChunkBS
     first : moreInodes -> do
       let archiveName = getFirstPathPiece first
       addHeader "Content-Disposition" ("attachment; filename=\"" ++ pack archiveName ++ ".zip" ++ "\"")
-      encKeysWithInodes <- mapM (\inode -> runDB $ getEncKeyOrInternalError inode kek) (first : moreInodes)
-      (_, tempFile) <- allocate (makeAllocateResource encKeysWithInodes) freeResource
+      encKeysWithInodes <- mapM (`getDecryptionFunctionMaybeFromDB` kek) (first : moreInodes)
+      path <- liftIO $ emptySystemTempFile "FileFighterFileHandler.zip"
+      runConduit $ createZip encKeysWithInodes path
+      (_, tempFile) <- allocate (makeAllocateResource path) freeResource
       sendFile "application/zip" tempFile
 
 justOrInternalError :: MonadHandler m => Maybe a -> m a
@@ -166,11 +175,8 @@ lookupPaths parentPath = do
     Just inodeNames -> pure $ map (\name -> fromMultiPiece $ parentPath <> [name]) inodeNames
     Nothing -> pure [fromMultiPiece parentPath]
 
-makeAllocateResource :: [(Inode, (AES256, IV AES256))] -> IO FilePath
-makeAllocateResource inodesWithKeys = do
-  path <- emptySystemTempFile "FileFighterFileHandler.zip"
-  createZip inodesWithKeys path
-  return path
+makeAllocateResource :: FilePath -> IO FilePath
+makeAllocateResource = return
 
 freeResource :: FilePath -> IO ()
 freeResource = removeFile

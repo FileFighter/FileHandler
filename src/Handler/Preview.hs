@@ -44,7 +44,7 @@ import FileStorage (filterFiles, retrieveFile)
 import FileSystemServiceClient.FileSystemServiceClient (FileSystemServiceClient (getInodeContent))
 import FileSystemServiceClient.FileSystemServiceClient hiding (mimeType)
 import Foundation
-import KeyStorage (getEncKeyOrInternalError)
+import KeyStorage (getDecryptionFunctionMaybeFromDB, getEncKeyOrInternalError)
 import Models.Inode
 import Models.Path (fromMultiPiece)
 import Models.RestApiStatus (RestApiStatus (RestApiStatus))
@@ -62,9 +62,9 @@ getPreviewR path = do
   inodes <- handleApiCall responseBody' responseStatusCode responseStatusMessage
   case map (\i -> (i, filterFiles i)) inodes of
     [(inode, True)] -> do
-      (inode, (key, iv)) <- runDB $ getEncKeyOrInternalError inode kek
+      (inode, decryptFunc) <- getDecryptionFunctionMaybeFromDB inode kek
       respondSource (S8.pack $ fromMaybe "application/octet-stream" (mimeType inode)) $
         retrieveFile inode
-          .| decryptConduit key iv mempty
+          .| decryptFunc
           .| awaitForever sendChunkBS
     _ -> sendErrorOrRedirect status400 $ toJSON $ RestApiStatus "Can not preview a folder." "Bad Request"

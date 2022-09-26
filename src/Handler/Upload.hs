@@ -5,12 +5,16 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 {-# OPTIONS_GHC -Wno-deprecations #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
+{-# HLINT ignore "Redundant bracket" #-}
 
 -- |
 module Handler.Upload where
 
 import ClassyPrelude
   ( Applicative ((<*>)),
+    Bool (True),
     ByteString,
     Eq ((/=)),
     IO,
@@ -22,6 +26,7 @@ import ClassyPrelude
     Monoid (mempty),
     Show (show),
     Text,
+    id,
     print,
     singleton,
     undefined,
@@ -43,6 +48,7 @@ import ClassyPrelude.Yesod
     runConduitRes,
     (.|),
   )
+import ConduitHelper (idC)
 import Crypto.Cipher.AES
 import Crypto.Cipher.Types (BlockCipher, IV, cipherInit, makeIV)
 import Crypto.CryptoConduit (encryptConduit)
@@ -92,7 +98,7 @@ import Yesod.Core
   )
 import Yesod.Core.Handler (sendResponseCreated)
 import Yesod.Core.Types (FileInfo (fileSourceRaw), loggerPutStr)
-import Prelude (read)
+import Prelude (Bool (True), const, read)
 
 postUploadR :: Handler Value
 postUploadR = do
@@ -113,9 +119,14 @@ postUploadR = do
           case filter filterFiles createdInodes of
             [singleInode] -> do
               (alloc, encKey') <- liftIO $ makeAllocateResource kek singleInode
-              runDB $ storeEncKey singleInode encKey'
-              (_, _) <- allocate alloc (makeFreeResource file singleInode)
-              return responseBody
+              case kek of
+                Nothing -> do
+                  (_, _) <- allocate alloc (makeFreeResource file singleInode)
+                  return responseBody
+                Just kek -> do
+                  runDB $ storeEncKey singleInode encKey'
+                  (_, _) <- allocate alloc (makeFreeResource file singleInode)
+                  return responseBody
             _ -> sendInternalError
 
 performPreflight :: (MonadHandler m, RedirectUrl (HandlerSite m) (Route App, [(Text, Text)])) => FileSystemServiceClient -> Text -> m ()
@@ -154,19 +165,20 @@ getRealFileSize fileInfo = do
         .| lengthCE
 
 -- this creates the encryptionKey by generating it
-makeAllocateResource :: KeyEncryptionKey -> Inode -> IO (IO (AES256, IV AES256), EncKey)
-makeAllocateResource kek inode = do
+makeAllocateResource :: Maybe KeyEncryptionKey -> Inode -> IO (IO (ConduitT ByteString ByteString (ResourceT IO) ()), Maybe EncKey)
+makeAllocateResource Nothing inode = return ((return idC), Nothing)
+makeAllocateResource (Just kek) inode = do
   secretKey :: Crypto.Types.Key AES256 ByteString <- genSecretKey (undefined :: AES256) 32
   let Key keyBytes = secretKey
   ivBytes <- genRandomIV (undefined :: AES256)
   let encKey' = EncKey (encryptWithKek kek keyBytes) ivBytes
-  return (return (initCipher secretKey, initIV ivBytes), encKey')
+  return (return $ encryptConduit (initCipher secretKey) (initIV ivBytes) mempty, Just encKey')
 
 -- this takes the encryption information and encrypts and moves the file after the response has been send
-makeFreeResource :: FileInfo -> Inode -> (AES256, IV AES256) -> IO ()
-makeFreeResource fileInfo inode (cipher, iv) = do
+makeFreeResource :: FileInfo -> Inode -> (ConduitT ByteString ByteString (ResourceT IO) ()) -> IO ()
+makeFreeResource fileInfo inode encryptFunc = do
   fileDest <- storeFile inode
   runConduitRes $
     fileSource fileInfo
-      .| encryptConduit cipher iv mempty
+      .| encryptFunc
       .| fileDest

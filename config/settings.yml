@@ -4,11 +4,11 @@ fileSystemServiceSettings:
   url: "_env:FILESYSTEMSERVICE_URL:localhost"
   port: "_env:FILESYSTEMSERVICE_PORT:8080"
 
-encryptionPassword: "_env:ENCRYPTION_PASSWORD:changeThis"
+encryptionPassword: "_env:ENCRYPTION_PASSWORD:changeThis" # set this to null to not use encryptio
 
 appDatabaseConf:
   user: root
   password: example
   host: "localhost"
   database: filehandler
-  connections: 10
+  connections: 9

@@ -1,4 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
+{-# HLINT ignore "Redundant bracket" #-}
 
 -- |
 module Utils.ZipFile where
@@ -8,21 +11,19 @@ import ClassyPrelude.Conduit
 import Codec.Archive.Zip.Conduit.Zip
 import Crypto.Cipher.AES
 import Crypto.Cipher.Types
-import Crypto.CryptoConduit (decryptConduit)
+import Crypto.CryptoConduit (DecFunc, decryptConduit)
 import Data.Time
 import FileStorage (getInodeModifcationTime, retrieveFile)
 import qualified Models.Inode
 
-createZip :: [(Models.Inode.Inode, (AES256, IV AES256))] -> FilePath -> IO ()
+createZip :: (MonadIO m, MonadResource m, MonadThrow m, PrimMonad m) => [(Models.Inode.Inode, (DecFunc m))] -> FilePath -> (ConduitT () Void m ())
 createZip inodes filename = do
-  timeZone <- liftIO getCurrentTimeZone
-  runConduitRes $
-    generateZipEntries inodes timeZone
-      .| void (zipStream zipOptions)
-      .| sinkFile filename
+  timeZone <-
+    liftIO getCurrentTimeZone
+  generateZipEntries inodes timeZone .| void (zipStream zipOptions) .| sinkFile filename
 
-generateZipEntries :: (MonadIO m, MonadResource m) => [(Models.Inode.Inode, (AES256, IV AES256))] -> TimeZone -> ConduitM () (ZipEntry, ZipData m) m ()
-generateZipEntries ((currentInode, (key, iv)) : nextInodes) timeZone = do
+generateZipEntries :: (MonadIO m, MonadResource m) => [(Models.Inode.Inode, (DecFunc m))] -> TimeZone -> ConduitM () (ZipEntry, ZipData m) m ()
+generateZipEntries ((currentInode, decryptFunc) : nextInodes) timeZone = do
   let nameInZip = fromMaybe (Models.Inode.name currentInode) $ Models.Inode.path currentInode
   let size' = Models.Inode.size currentInode
   timeStamp <- liftIO $ getTimestampForInode currentInode
@@ -34,7 +35,7 @@ generateZipEntries ((currentInode, (key, iv)) : nextInodes) timeZone = do
             zipEntryExternalAttributes = Nothing
           }
 
-  yield (entry, ZipDataSource $retrieveFile currentInode .| decryptConduit key iv mempty)
+  yield (entry, ZipDataSource $ retrieveFile currentInode .| decryptFunc)
   generateZipEntries nextInodes timeZone
   return ()
 generateZipEntries [] _ = return ()

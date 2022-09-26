@@ -33,7 +33,7 @@ data AppSettings = AppSettings
   { appProfile :: String,
     appDatabaseConf :: MongoConf,
     fileSystemServiceSettings :: FileSystemServiceSettings,
-    encryptionPassword :: String
+    encryptionPassword :: Maybe String
   }
   deriving (Generic)
 

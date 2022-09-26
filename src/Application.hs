@@ -10,14 +10,21 @@ module Application
 where
 
 import ClassyPrelude
-  ( Bool (False, True),
-    Eq ((==)),
+  ( Applicative ((<*>)),
+    Bool (False, True),
+    Eq ((/=), (==)),
+    Functor (fmap),
     IO,
     Maybe (Just, Nothing),
     Monad (return, (>>=)),
     Num ((*)),
     const,
+    isJust,
+    map,
+    print,
+    when,
     ($),
+    (<$>),
     (||),
   )
 import ClassyPrelude.Yesod (Default (def), PersistConfig (createPoolConfig))
@@ -81,8 +88,14 @@ makeFoundation :: AppSettings -> IO App
 makeFoundation appSettings = do
   let fssC = makeFileSystemServiceClient (fileSystemServiceSettings appSettings)
 
-  iv <- getOrCreateKekIV
-  let keyEncrptionKey = createKeyEncrptionKey (encryptionPassword appSettings) iv
+  let maybeEncryptionPassword = case encryptionPassword appSettings of
+        Just "null" -> Nothing
+        Nothing -> Nothing
+        Just password -> Just password
+
+  print maybeEncryptionPassword
+  iv <- if isJust $ maybeEncryptionPassword then getOrCreateKekIV else return "FallBackIV"
+  let keyEncrptionKey = createKeyEncrptionKey <$> maybeEncryptionPassword <*> Just iv
   appConnPool <- createPoolConfig $ appDatabaseConf appSettings
   appLogger <- newStdoutLoggerSet defaultBufSize >>= makeYesodLogger
 

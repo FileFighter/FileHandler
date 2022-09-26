@@ -31,7 +31,7 @@ data App = App
   { appSettings :: AppSettings,
     appConnPool :: ConnectionPool,
     fileSystemServiceClient :: FileSystemServiceClient,
-    keyEncrptionKey :: KeyEncryptionKey,
+    keyEncrptionKey :: Maybe KeyEncryptionKey,
     appLogger :: Logger
   }
 
