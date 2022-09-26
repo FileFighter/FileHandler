@@ -7,7 +7,7 @@ fileSystemServiceSettings:
 encryptionPassword: "_env:ENCRYPTION_PASSWORD:changeThis" # set this to null to not use encryptio
 
 appDatabaseConf:
-  user: root
+  user: filehandler
   password: example
   host: "localhost"
   database: filehandler
