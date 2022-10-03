@@ -1,31 +1,37 @@
-# FileHandlerService
 
-Haskell FileHandler Server.
+# FileHanderService
+Haskell FileHandler Server for the [FileFighter](https://github.com/FileFighter) NAS Project.
 
-_Work In Progress_
+Build using the Yesod Framework (see below).
 
-Base of this code base is this [repo](https://github.com/snoyberg/file-server-demo)
+## Haskell Setup
 
-## Features
-- [ ] browse does not exist anymore.
-- [ ] upload path is POST /upload?id=id,id1,id2&token=token
-- [ ] request to upload triggers request to backend
-- [ ] upload does support multiple files
-- [ ] download path is GET /download?id=id,id1,id2&token=token
-- [ ] request to download triggers request to backend
-- [ ] download supports multiple files (zipped as one)
-- [ ] service is either mapped with a usefull prefix /userdata/ or a fake subdomain files.....de/upload...  
-**(Roadmap feature)**
-- [ ] there is another path /preview/id?token=token
+1. If you haven't already, [install Stack](https://haskell-lang.org/get-started)
+	* On POSIX systems, this is usually `curl -sSL https://get.haskellstack.org/ | sh`
+2. Install GHC: `stack setup`
+3. Build libraries: `stack build`
 
-Text below is from the original code base.
+## Development
 
----
+Start a development server with:
 
-# Getting started
+```
+stack build --exec test-minimal
+```
 
-`stack build --file-watch --watch-all  --fast`
+## Documentation
 
-`filewatcher --restart '**/*.hs' 'stack build --fast && stack exec Filehandler-exe'`
+* Read the [Yesod Book](https://www.yesodweb.com/book) online for free
+* Check [Stackage](http://stackage.org/) for documentation on the packages in your LTS Haskell version, or [search it using Hoogle](https://www.stackage.org/lts/hoogle?q=). Tip: Your LTS version is in your `stack.yaml` file.
+* For local documentation, use:
+	* `stack haddock --open` to generate Haddock documentation for your dependencies, and open that documentation in a browser
+	* `stack hoogle <function, module or type signature>` to generate a Hoogle database and search for your query
+* The [Yesod cookbook](https://github.com/yesodweb/yesod-cookbook) has sample code for various needs
 
-`stack exec Filehandler-exe`
+## Getting Help
+
+* Ask questions on [Stack Overflow, using the Yesod or Haskell tags](https://stackoverflow.com/questions/tagged/yesod+haskell)
+* Ask the [Yesod Google Group](https://groups.google.com/forum/#!forum/yesodweb)
+* There are several chatrooms you can ask for help:
+	* For IRC, try Freenode#yesod and Freenode#haskell
+	* [Functional Programming Slack](https://fpchat-invite.herokuapp.com/), in the #haskell, #haskell-beginners, or #yesod channels.

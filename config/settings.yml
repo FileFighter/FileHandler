@@ -1,0 +1,14 @@
+appProfile: "_env:APP_PROFILE:prod"
+
+fileSystemServiceSettings:
+  url: "_env:FILESYSTEMSERVICE_URL:localhost"
+  port: "_env:FILESYSTEMSERVICE_PORT:8080"
+
+encryptionPassword: "_env:ENCRYPTION_PASSWORD:null" # set this to null to not use encryptio
+
+appDatabaseConf:
+  user: filehandler
+  password: example
+  host: "localhost"
+  database: filehandler
+  connections: 9

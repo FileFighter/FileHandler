@@ -1,0 +1,69 @@
+name: FileHandlerYesod
+version: "0.1.0"
+
+dependencies:
+  - aeson
+  - base
+  - bytestring
+  - case-insensitive
+  - classy-prelude
+  - classy-prelude-conduit
+  - classy-prelude-yesod
+  - cryptonite
+  - directory
+  - file-embed
+  - filepath
+  - http-types
+  - memory
+  - mtl
+  - req
+  - resourcet
+  - temporary
+  - text
+  - time
+  - wai
+  - wai-cors
+  - wai-extra
+  - warp
+  - yaml
+  - yesod
+  - yesod-core
+  - zip
+  - zip-stream
+  - persistent
+  - yesod-persistent
+  - persistent-mongoDB
+  - mongoDB
+  - template-haskell
+  - fast-logger
+
+# The library contains all of our application code. The executable
+# defined below is just a thin wrapper.
+library:
+  source-dirs: src
+
+# Test suite
+tests:
+  yesodMongoTemplate-test:
+    main: Spec.hs
+    source-dirs: test
+    ghc-options: -Wall
+    dependencies:
+      - FileHandlerYesod
+      - hspec >=2.0.0
+      - yesod-test
+
+# Runnable executable for our application
+executables:
+  FileHandlerYesod:
+    main: Main.hs
+    source-dirs: app
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+
+    dependencies:
+      - FileHandlerYesod
+
+default-extensions: NoImplicitPrelude

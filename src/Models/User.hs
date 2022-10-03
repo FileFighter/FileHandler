@@ -1,0 +1,29 @@
+{-# LANGUAGE DeriveGeneric #-}
+
+module Models.User where
+import ClassyPrelude
+
+import Data.Aeson
+
+data User = User
+  { userId :: Int,
+    username :: String,
+    privileges :: String
+  }
+  deriving (Show, Generic)
+
+
+instance ToJSON User
+
+userIdFieldRename :: String -> String
+userIdFieldRename "userId" = "id"
+userIdFieldRename "id" = "userId"
+userIdFieldRename name = name
+
+instance FromJSON User where
+  parseJSON =
+    genericParseJSON
+      defaultOptions
+        { fieldLabelModifier = userIdFieldRename,
+          omitNothingFields = True
+        }
