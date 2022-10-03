@@ -21,7 +21,6 @@ import ClassyPrelude
     const,
     isJust,
     map,
-    print,
     when,
     ($),
     (<$>),
@@ -79,7 +78,7 @@ import System.Log.FastLogger
     toLogStr,
   )
 import Yesod.Core (mkYesodDispatch, toWaiApp)
-import Yesod.Core.Types (Logger (loggerSet))
+import Yesod.Core.Types (Logger (loggerSet), loggerPutStr)
 import Yesod.Default.Config2 (makeYesodLogger)
 
 mkYesodDispatch "App" resourcesApp
@@ -93,11 +92,11 @@ makeFoundation appSettings = do
         Nothing -> Nothing
         Just password -> Just password
 
-  print maybeEncryptionPassword
-  iv <- if isJust $ maybeEncryptionPassword then getOrCreateKekIV else return "FallBackIV"
+  iv <- if isJust maybeEncryptionPassword then getOrCreateKekIV else return "FallBackIV"
   let keyEncrptionKey = createKeyEncrptionKey <$> maybeEncryptionPassword <*> Just iv
   appConnPool <- createPoolConfig $ appDatabaseConf appSettings
   appLogger <- newStdoutLoggerSet defaultBufSize >>= makeYesodLogger
+  loggerPutStr appLogger $ if isJust maybeEncryptionPassword then "Using Encryption \n" else "Not using encryption \n"
 
   return
     App

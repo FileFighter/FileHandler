@@ -3,6 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 {-# OPTIONS_GHC -Wno-deprecations #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
@@ -27,27 +28,14 @@ import ClassyPrelude
     Show (show),
     Text,
     id,
-    print,
+    pack,
     singleton,
     undefined,
     ($),
     (.),
     (<$>),
   )
-import ClassyPrelude.Yesod
-  ( ConduitT,
-    FileInfo (fileContentType),
-    MonadHandler (HandlerSite),
-    PersistStoreWrite (insertKey),
-    RedirectUrl,
-    RenderRoute (Route),
-    Response (responseBody),
-    defaultMakeLogger,
-    lengthC,
-    lengthCE,
-    runConduitRes,
-    (.|),
-  )
+import ClassyPrelude.Yesod (ConduitT, FileInfo (fileContentType), MonadHandler (HandlerSite), PersistStoreWrite (insertKey), RedirectUrl, RenderRoute (Route), Response (responseBody), defaultMakeLogger, lengthC, lengthCE, logDebug, logInfo, runConduitRes, (.|))
 import ConduitHelper (idC)
 import Crypto.Cipher.AES
 import Crypto.Cipher.Types (BlockCipher, IV, cipherInit, makeIV)
@@ -90,6 +78,7 @@ import Yesod.Core
     fileSource,
     getYesod,
     invalidArgs,
+    logDebug,
     lookupBearerAuth,
     lookupHeader,
     notAuthenticated,
@@ -114,8 +103,8 @@ postUploadR = do
         Nothing -> invalidArgs ["Missing required Header."]
         Just inode -> do
           (responseBody, responseStatusCode, responseStatusMessage) <- liftIO $ createInode authToken inode
-          liftIO $ print $ show responseBody
           createdInodes <- handleApiCall responseBody responseStatusCode responseStatusMessage
+          $(logInfo) $ pack $ show createdInodes
           case filter filterFiles createdInodes of
             [singleInode] -> do
               (alloc, encKey') <- liftIO $ makeAllocateResource kek singleInode

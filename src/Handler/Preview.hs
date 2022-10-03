@@ -14,7 +14,6 @@ import ClassyPrelude
     fromMaybe,
     intercalate,
     map,
-    print,
     ($),
     (.),
     (<>),

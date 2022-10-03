@@ -3,6 +3,7 @@
 {-# HLINT ignore "Redundant bracket" #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
@@ -42,7 +43,6 @@ import ClassyPrelude
     maybe,
     pack,
     parseTimeM,
-    print,
     pure,
     putStrLn,
     readFile,
@@ -122,6 +122,7 @@ import System.IO.Temp (emptySystemTempFile)
 import UnliftIO.Resource (allocate, runResourceT)
 import Utils.HandlerUtils (handleApiCall, handleApiCall', lookupAuth, sendErrorOrRedirect, sendInternalError)
 import Utils.ZipFile
+import Yesod.Core (logInfo)
 import Yesod.Routes.TH.Types (flatten)
 
 getDownloadR :: [Text] -> Handler TypedContent
@@ -146,7 +147,7 @@ getDownloadR path = do
   case inodes of
     [] -> sendErrorOrRedirect status400 $ toJSON $ RestApiStatus "Can not download a empty folder." "Bad Request"
     [singleInode] -> do
-      liftIO $ print $ size singleInode
+      $(logInfo) $ pack $ "Dowload of Inode " <> show singleInode
       (inode, decFunc) <- getDecryptionFunctionMaybeFromDB singleInode kek
 
       addHeader "Content-Disposition" $ pack ("attachment; filename=\"" ++ Models.Inode.name singleInode ++ "\"")

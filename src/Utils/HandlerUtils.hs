@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 
 -- |
@@ -13,21 +14,24 @@ import ClassyPrelude
     Monad (return, (>>=)),
     MonadIO (liftIO),
     Ord ((<), (<=)),
+    Show (show),
     Text,
     Utf8 (decodeUtf8),
     elem,
     maybe,
     otherwise,
     pack,
-    print,
     putStr,
     putStrLn,
+    unpack,
     ($),
     (&&),
     (.),
     (<$>),
+    (<>),
   )
 import Data.Aeson
+import qualified Data.Text as Text
 import Foundation
 import Models.RestApiStatus
 import Network.HTTP.Types
@@ -38,6 +42,7 @@ import Yesod
     RedirectUrl,
     YesodRequest (reqAccept, reqWaiRequest),
     getRequest,
+    logError,
     lookupCookie,
     lookupGetParam,
     notAuthenticated,
@@ -58,13 +63,13 @@ handleApiCall body statusCode statusMessage
       Success value ->
         return value
       Error e -> do
-        liftIO $ print e
+        $(logError) $ pack e
         sendInternalError
   | 400 <= statusCode && statusCode < 500 = do
-    liftIO $ print "4XX domain error"
+    $(logError) $ pack ("4XX domain  error. StatusCode: " <> show statusCode <> " StatusMessage: ") <> decodeUtf8 statusMessage
     sendErrorOrRedirect (Status statusCode statusMessage) body --sendResponseStatus (Status statusCode statusMessage) body
   | otherwise = do
-    liftIO $ print body
+    $(logError) $ pack $ show body
     sendInternalError
 
 sendErrorOrRedirect :: (MonadHandler m, RedirectUrl (HandlerSite m) (Route App, [(Text, Text)])) => Status -> Value -> m a
