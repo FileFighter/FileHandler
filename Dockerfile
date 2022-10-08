@@ -1,13 +1,14 @@
-FROM ubuntu:latest
+FROM debian:testing-slim
 
 ARG BINLOCATION
-ENV RESTURL=FileFighterREST
-ENV PROFILE=prod
+ENV FILESYSTEMSERVICE_URL=fss
+ENV FILESYSTEMSERVICE_PORT=8080
+ENV APP_PROFILE=prod
+ENV ENCRYPTION_PASSWORD=null
 
-RUN apt-get update && apt-get upgrade -y
 
 # Copy over the source code and make it executable.
-ADD $BINLOCATION/bin/Filehandler-exe /usr/local/bin/filehandler-exe
+ADD $BINLOCATION/bin/FileHandlerYesod /usr/local/bin/filehandler-exe
 RUN chmod +x /usr/local/bin/filehandler-exe
 
 # TODO: because we want to write to a host directory we must run as root, or change the permissions of the directory
