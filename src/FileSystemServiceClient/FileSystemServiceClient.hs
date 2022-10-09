@@ -44,7 +44,7 @@ data FileSystemServiceClient = FileSystemServiceClient
   { deleteInode :: Text -> [Text] -> IO (Value, Int, ByteString),
     createInode :: Text -> UploadedInode -> IO (Value, Int, ByteString),
     preflightInode :: Text -> PreflightInode -> IO (Value, Int, ByteString),
-    getInodeInfo :: Text -> String -> IO (Value, Int, ByteString),
+    getInodeInfo :: Text -> Path -> IO (Value, Int, ByteString),
     getInodeContent :: Text -> Path -> IO (Value, Int, ByteString)
   }
 
@@ -84,7 +84,7 @@ makeDeleteInode r@FileSystemServiceSettings {url = url, port = port} authorizati
   r <-
     req
       DELETE
-      (http (pack url) /: "api" /: "filesystem" /: "delete")
+      (http (pack url) /: "api" /: "api" /: "filesystem" /: "delete")
       NoReqBody
       jsonResponse
       ( oAuth2Bearer' (encodeUtf8 authorization) <> Req.port port
@@ -99,8 +99,7 @@ makeCreateInode r@FileSystemServiceSettings {url = url, port = port} authorizati
   r <-
     req
       POST -- method
-      --(http (DataText.pack restUrl) /: "t/os3vu-1615111052/post")
-      (http (pack url) /: "api" /: "filesystem" /: "upload")
+      (http (pack url) /: "api" /: "api" /: "filesystem" /: "upload")
       (ReqBodyJson uploadedInode) -- use built-in options or add your own
       jsonResponse
       (oAuth2Bearer' (encodeUtf8 authorization) <> Req.port port) -- parentID not in Headers
@@ -111,22 +110,24 @@ makePreflightInode r@FileSystemServiceSettings {url = url, port = port} authoriz
   r <-
     req
       POST -- method
-      (http (pack url) /: "api" /: "filesystem" /: "preflight")
+      (http (pack url) /: "api" /: "api" /: "filesystem" /: "preflight")
       (ReqBodyJson preflightInode)
       jsonResponse
       (oAuth2Bearer' (encodeUtf8 authorization) <> Req.port port) -- parentID not in Headers
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
-makeGetInodeInfo :: FileSystemServiceSettings -> Text -> String -> IO (Value, Int, ByteString)
-makeGetInodeInfo r@FileSystemServiceSettings {url = url, port = port} authorization id = runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
+makeGetInodeInfo :: FileSystemServiceSettings -> Text -> Path -> IO (Value, Int, ByteString)
+makeGetInodeInfo r@FileSystemServiceSettings {url = url, port = port} authorization path = runReq (defaultHttpConfig {httpConfigCheckResponse = httpConfigDontCheckResponse}) $ do
   r <-
     req
       GET -- method
-      (http (pack url) /: "v1" /: "filesystem" /: pack id /: "info") -- safe by construction URL
-      --(http (DataText.pack restUrl) /: "v1" /: "filesystem" /:  id /: "info" ) -- safe by construction URL
+      (http (pack url) /: "api" /: "api" /: "filesystem" /: "info")
       NoReqBody -- use built-in options or add your own
-      jsonResponse -- specify how to interpret response
-      (oAuth2Bearer' (encodeUtf8 authorization) <> Req.port port)
+      jsonResponse
+      ( oAuth2Bearer' (encodeUtf8 authorization)
+          <> Req.port port
+          <> header "X-FF-PATH" (toByteString path)
+      )
   -- mempty -- query params, headers, explicit port number, etc.
   return (responseBody r, responseStatusCode r, responseStatusMessage r)
 
@@ -135,7 +136,7 @@ makeGetInodeContent r@FileSystemServiceSettings {url = url, port = port} authori
   r <-
     req
       GET -- method
-      (http (pack url) /: "api" /: "filesystem" /: "download") -- safe by construction URL
+      (http (pack url) /: "api" /: "api" /: "filesystem" /: "download") -- safe by construction URL
       -- (http (DataText.pack restUrl) /:"v1" /: "filesystem" /: DataText.pack  (S8.unpack (getOneHeader allHeaders "X-FF-IDS" )) /: "info")
       NoReqBody -- use built-in options or add your own
       jsonResponse -- specify how to interpret response
