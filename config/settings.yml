@@ -4,6 +4,8 @@ fileSystemServiceSettings:
   url: "_env:FILESYSTEMSERVICE_URL:localhost"
   port: "_env:FILESYSTEMSERVICE_PORT:8080"
 
+frontendOrigin: "_env:FRONTEND_ORIGIN:http://localhost:3000"
+
 encryptionPassword: "_env:ENCRYPTION_PASSWORD:null" # set this to null to not use encryptio
 
 appDatabaseConf:

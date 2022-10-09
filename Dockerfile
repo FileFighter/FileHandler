@@ -9,6 +9,7 @@ ENV DB_USERNAME=filehandler
 ENV DB_PASSWORD=changeThis
 ENV DB_CONTAINER_NAME=db
 ENV DB_NAME=filehandler
+ENV FRONTEND_ORIGIN=http://localhost:80
 
 # Copy over the source code and make it executable.
 ADD $BINLOCATION/bin/FileHandlerYesod /usr/local/bin/filehandler-exe

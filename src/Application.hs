@@ -12,12 +12,17 @@ where
 import ClassyPrelude
   ( Applicative ((<*>)),
     Bool (False, True),
+    ByteString,
     Eq ((/=), (==)),
     Functor (fmap),
     IO,
     Maybe (Just, Nothing),
     Monad (return, (>>=)),
     Num ((*)),
+    Semigroup ((<>)),
+    Show (show),
+    String,
+    Text,
     const,
     isJust,
     map,
@@ -28,6 +33,7 @@ import ClassyPrelude
   )
 import ClassyPrelude.Yesod (Default (def), PersistConfig (createPoolConfig))
 import Crypto.KeyEncrptionKey (createKeyEncrptionKey, getOrCreateKekIV)
+import Data.ByteString.Char8 (pack)
 import Data.Yaml.Config (loadYamlSettingsArgs, useEnv)
 import FileSystemServiceClient.FileSystemServiceClient (makeFileSystemServiceClient)
 import Foundation
@@ -69,7 +75,7 @@ import Network.Wai.Middleware.Cors
 import Network.Wai.Middleware.RequestLogger (Destination (Logger), IPAddrSource (FromFallback, FromSocket), OutputFormat (Apache, Detailed), RequestLoggerSettings (destination, outputFormat), mkRequestLogger)
 import Network.Wai.Parse ()
 import Settings
-  ( AppSettings (appDatabaseConf, appProfile, encryptionPassword, fileSystemServiceSettings),
+  ( AppSettings (appDatabaseConf, appProfile, encryptionPassword, fileSystemServiceSettings, frontendOrigin),
     configSettingsYmlValue,
   )
 import System.Log.FastLogger
@@ -77,6 +83,7 @@ import System.Log.FastLogger
     newStdoutLoggerSet,
     toLogStr,
   )
+import Utils.FileFighterBanner (printBanner)
 import Yesod.Core (mkYesodDispatch, toWaiApp)
 import Yesod.Core.Types (Logger (loggerSet), loggerPutStr)
 import Yesod.Default.Config2 (makeYesodLogger)
@@ -85,8 +92,8 @@ mkYesodDispatch "App" resourcesApp
 
 makeFoundation :: AppSettings -> IO App
 makeFoundation appSettings = do
+  printBanner
   let fssC = makeFileSystemServiceClient (fileSystemServiceSettings appSettings)
-
   let maybeEncryptionPassword = case encryptionPassword appSettings of
         Just "null" -> Nothing
         Nothing -> Nothing
@@ -96,7 +103,7 @@ makeFoundation appSettings = do
   let keyEncrptionKey = createKeyEncrptionKey <$> maybeEncryptionPassword <*> Just iv
   appConnPool <- createPoolConfig $ appDatabaseConf appSettings
   appLogger <- newStdoutLoggerSet defaultBufSize >>= makeYesodLogger
-  loggerPutStr appLogger $ if isJust maybeEncryptionPassword then "Using Encryption \n" else "Not using encryption \n"
+  loggerPutStr appLogger $ toLogStr $ "Using Config: \n" <> show appSettings <> "\n"
 
   return
     App
@@ -139,12 +146,13 @@ appMain = do
 
   application <- toWaiApp app
 
-  run 5000 $ cors (const devCorsPolicy) application
+  run 5000 $ cors (const $ corsPolicy $ pack $ frontendOrigin settings) application
 
-devCorsPolicy =
+corsPolicy :: ByteString -> Maybe CorsResourcePolicy
+corsPolicy frontendOrigin =
   Just
     CorsResourcePolicy
-      { corsOrigins = Just (["http://localhost:3000"], True),
+      { corsOrigins = Just ([frontendOrigin], True),
         corsMethods = ["GET", "POST", "DELETE"],
         corsRequestHeaders = ["Authorization", "content-type", "X-FF-IDS", "X-FF-ID", "X-FF-NAME", "X-FF-PATH", "X-FF-SIZE", "X-FF-PARENT-PATH", "X-FF-RELATIVE-PATH", "X-FF-PARENT-PATH"],
         corsExposedHeaders = Just ["Content-Disposition"],
