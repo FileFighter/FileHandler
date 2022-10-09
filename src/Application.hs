@@ -92,7 +92,6 @@ mkYesodDispatch "App" resourcesApp
 
 makeFoundation :: AppSettings -> IO App
 makeFoundation appSettings = do
-  printBanner
   let fssC = makeFileSystemServiceClient (fileSystemServiceSettings appSettings)
   let maybeEncryptionPassword = case encryptionPassword appSettings of
         Just "null" -> Nothing
@@ -103,6 +102,7 @@ makeFoundation appSettings = do
   let keyEncrptionKey = createKeyEncrptionKey <$> maybeEncryptionPassword <*> Just iv
   appConnPool <- createPoolConfig $ appDatabaseConf appSettings
   appLogger <- newStdoutLoggerSet defaultBufSize >>= makeYesodLogger
+  printBanner $ loggerPutStr appLogger
   loggerPutStr appLogger $ toLogStr $ "Using Config: \n" <> show appSettings <> "\n"
 
   return
@@ -146,13 +146,13 @@ appMain = do
 
   application <- toWaiApp app
 
-  run 5000 $ cors (const $ corsPolicy $ pack $ frontendOrigin settings) application
+  run 5000 $ cors (const $ corsPolicy $ frontendOrigin settings) application
 
-corsPolicy :: ByteString -> Maybe CorsResourcePolicy
+corsPolicy :: String -> Maybe CorsResourcePolicy
 corsPolicy frontendOrigin =
   Just
     CorsResourcePolicy
-      { corsOrigins = Just ([frontendOrigin], True),
+      { corsOrigins = Just ([pack frontendOrigin], True),
         corsMethods = ["GET", "POST", "DELETE"],
         corsRequestHeaders = ["Authorization", "content-type", "X-FF-IDS", "X-FF-ID", "X-FF-NAME", "X-FF-PATH", "X-FF-SIZE", "X-FF-PARENT-PATH", "X-FF-RELATIVE-PATH", "X-FF-PARENT-PATH"],
         corsExposedHeaders = Just ["Content-Disposition"],

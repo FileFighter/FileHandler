@@ -10,8 +10,8 @@
 -- |
 module KeyStorage where
 
-import ClassyPrelude (Bool (True), ByteString, Handler, IO, Maybe (Just, Nothing), MonadIO (liftIO), Monoid (mempty), ReaderT, const, maybe, throwIO)
-import ClassyPrelude.Yesod (ConduitT, ErrorResponse (NotFound), MonadHandler, PersistStoreRead (get), ResourceT, YesodPersist (YesodPersistBackend, runDB), return, takeWhileCE, ($))
+import ClassyPrelude (Bool (True), ByteString, Handler, IO, Int, Maybe (Just, Nothing), MonadIO (liftIO), Monoid (mempty), ReaderT, Traversable (mapM), any, const, length, maybe, throwIO)
+import ClassyPrelude.Yesod (ConduitT, ErrorResponse (NotFound), Filter, MonadHandler, PersistQueryRead (count), PersistStoreRead (get), ResourceT, YesodPersist (YesodPersistBackend, runDB), return, selectList, takeWhileCE, ($))
 import ConduitHelper (idC)
 import Crypto.Cipher.AES (AES256)
 import Crypto.Cipher.Types (IV)
@@ -25,12 +25,23 @@ import Database.Persist.MongoDB (Entity (Entity), MongoContext, PersistQueryRead
 import Foundation (App)
 import Models.Inode (Inode (Inode, fileSystemId))
 import Utils.HandlerUtils (sendInternalError)
-import Yesod.Core.Types (HandlerContents (HCError))
+import Yesod.Core.Types (HandlerContents (HCError), HandlerFor)
 
+getDecryptionFunctionMaybeFromDB :: (YesodPersist site, YesodPersistBackend site ~ MongoContext) => Inode -> Maybe KeyEncryptionKey -> Yesod.Core.Types.HandlerFor site (Inode, ConduitT ByteString ByteString (Yesod.Core.Types.HandlerFor site) ())
 getDecryptionFunctionMaybeFromDB inode kek = do
   case kek of
     Just kek -> runDB $ getEncKeyOrInternalError inode kek
     Nothing -> return (inode, idC)
+
+maybeCountKeys :: (YesodPersist site, YesodPersistBackend site ~ MongoContext, PersistRecordBackend EncKey MongoContext) => Maybe KeyEncryptionKey -> Yesod.Core.Types.HandlerFor site Int
+maybeCountKeys Nothing = return 0
+maybeCountKeys (Just kek) = do
+  runDB countEncKeys
+
+countEncKeys :: (MonadIO m, PersistRecordBackend EncKey MongoContext, PersistQueryRead MongoContext) => ReaderT MongoContext m Int
+countEncKeys = do
+  let filter = [] :: [Filter EncKey]
+  count filter
 
 getEncKeyOrInternalError ::
   (MonadHandler m, PersistRecordBackend EncKey MongoContext, PersistQueryRead MongoContext) =>
