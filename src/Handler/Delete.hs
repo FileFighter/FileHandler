@@ -7,10 +7,10 @@ import ClassyPrelude hiding (Handler, filter)
 import Data.Aeson
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as DataText
-import FileStorage (filterFiles, getPathFromFileId)
+import FileStorage (deleteFile, filterFiles, getPathFromFileId)
 import FileSystemServiceClient.FileSystemServiceClient
 import Foundation
-import KeyStorage (deleteEncKey)
+import KeyStorage (deleteEncKey, maybeDeleteKeys)
 import Models.Inode
 import Network.HTTP.Req
 import Network.HTTP.Types
@@ -22,13 +22,10 @@ import Prelude (filter)
 
 deleteDeleteR :: [Text] -> Handler Value
 deleteDeleteR path = do
-  App {fileSystemServiceClient = FileSystemServiceClient {deleteInode = deleteInode}} <- getYesod
+  App {fileSystemServiceClient = FileSystemServiceClient {deleteInode = deleteInode}, keyEncrptionKey = kek} <- getYesod
   authToken <- lookupAuth
   (responseBody, responseStatusCode, responseStatusMessage) <- liftIO $ deleteInode authToken path
   inodes <- handleApiCall responseBody responseStatusCode responseStatusMessage
-  liftIO $ mapM_ deleteFile (filter filterFiles inodes) -- Todo: check if file exists
-  runDB $ mapM_ deleteEncKey inodes
+  mapM_ deleteFile (filter filterFiles inodes) -- Todo: check if file exists
+  maybeDeleteKeys kek inodes
   return responseBody
-
-deleteFile :: Inode -> IO ()
-deleteFile file = removeFile $ getPathFromFileId (show $ fileSystemId file)

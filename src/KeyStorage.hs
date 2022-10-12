@@ -3,14 +3,11 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-
-{-# HLINT ignore "Redundant bracket" #-}
 
 -- |
 module KeyStorage where
 
-import ClassyPrelude (Bool (True), ByteString, Handler, IO, Int, Maybe (Just, Nothing), MonadIO (liftIO), Monoid (mempty), ReaderT, Traversable (mapM), any, const, length, maybe, throwIO)
+import ClassyPrelude (Bool (True), ByteString, Handler, IO, Int, Maybe (Just, Nothing), MonadIO (liftIO), Monoid (mempty), ReaderT, Traversable (mapM), any, const, length, mapM_, maybe, throwIO)
 import ClassyPrelude.Yesod (ConduitT, ErrorResponse (NotFound), Filter, MonadHandler, PersistQueryRead (count), PersistStoreRead (get), ResourceT, YesodPersist (YesodPersistBackend, runDB), return, selectList, takeWhileCE, ($))
 import ConduitHelper (idC)
 import Crypto.Cipher.AES (AES256)
@@ -27,34 +24,59 @@ import Models.Inode (Inode (Inode, fileSystemId))
 import Utils.HandlerUtils (sendInternalError)
 import Yesod.Core.Types (HandlerContents (HCError), HandlerFor)
 
-getDecryptionFunctionMaybeFromDB :: (YesodPersist site, YesodPersistBackend site ~ MongoContext) => Inode -> Maybe KeyEncryptionKey -> Yesod.Core.Types.HandlerFor site (Inode, ConduitT ByteString ByteString (Yesod.Core.Types.HandlerFor site) ())
-getDecryptionFunctionMaybeFromDB inode kek = do
-  case kek of
-    Just kek -> runDB $ getEncKeyOrInternalError inode kek
-    Nothing -> return (inode, idC)
-
-maybeCountKeys :: (YesodPersist site, YesodPersistBackend site ~ MongoContext, PersistRecordBackend EncKey MongoContext) => Maybe KeyEncryptionKey -> Yesod.Core.Types.HandlerFor site Int
+maybeCountKeys ::
+  (YesodPersist site, YesodPersistBackend site ~ MongoContext, PersistRecordBackend EncKey MongoContext) =>
+  Maybe KeyEncryptionKey ->
+  Yesod.Core.Types.HandlerFor site Int
 maybeCountKeys Nothing = return 0
-maybeCountKeys (Just kek) = do
+maybeCountKeys (Just kek) =
   runDB countEncKeys
 
-countEncKeys :: (MonadIO m, PersistRecordBackend EncKey MongoContext, PersistQueryRead MongoContext) => ReaderT MongoContext m Int
+countEncKeys ::
+  (MonadIO m, PersistRecordBackend EncKey MongoContext, PersistQueryRead MongoContext) =>
+  ReaderT MongoContext m Int
 countEncKeys = do
   let filter = [] :: [Filter EncKey]
   count filter
+
+maybeDeleteKeys ::
+  (YesodPersist site, YesodPersistBackend site ~ MongoContext, PersistRecordBackend EncKey MongoContext) =>
+  Maybe KeyEncryptionKey ->
+  [Inode] ->
+  Yesod.Core.Types.HandlerFor site ()
+maybeDeleteKeys Nothing inodes = return ()
+maybeDeleteKeys _ inodes =
+  runDB $ mapM_ deleteEncKey inodes
+
+deleteEncKey ::
+  (MonadHandler m, PersistRecordBackend EncKey MongoContext, PersistQueryRead MongoContext) =>
+  Inode ->
+  ReaderT MongoContext m ()
+deleteEncKey inode =
+  delete (EncKeyKey $ fileSystemId inode)
+
+getDecryptionFunctionMaybeFromDB ::
+  (YesodPersist site, YesodPersistBackend site ~ MongoContext) =>
+  Inode ->
+  Maybe KeyEncryptionKey ->
+  Yesod.Core.Types.HandlerFor site (Inode, ConduitT ByteString ByteString (Yesod.Core.Types.HandlerFor site) ())
+getDecryptionFunctionMaybeFromDB inode kek =
+  case kek of
+    Just kek -> runDB $ getEncKeyOrInternalError inode kek
+    Nothing -> return (inode, idC)
 
 getEncKeyOrInternalError ::
   (MonadHandler m, PersistRecordBackend EncKey MongoContext, PersistQueryRead MongoContext) =>
   Inode ->
   KeyEncryptionKey ->
-  ReaderT MongoContext m (Inode, (ConduitT ByteString ByteString m ()))
+  ReaderT MongoContext m (Inode, ConduitT ByteString ByteString m ())
 getEncKeyOrInternalError inode kek = do
-  mres :: (Maybe (EncKey)) <- get $ EncKeyKey (fileSystemId inode)
+  mres :: (Maybe EncKey) <- get $ EncKeyKey (fileSystemId inode)
   case mres of
     Nothing -> sendInternalError
-    Just (encKey) -> do
+    Just encKey -> do
       let key :: AES256 = initCipher $ Key (decryptWithKek kek $ encKeyCipherKey encKey)
-      let iv = (initIV $ encKeyCipherIv encKey)
+      let iv = initIV $ encKeyCipherIv encKey
       return (inode, decryptConduit key iv mempty)
 
 storeEncKey ::
@@ -67,11 +89,4 @@ storeEncKey inode (Just encKey) = do
   insertKey dbKey encKey
   get dbKey
   return ()
-storeEncKey inode (Nothing) = return ()
-
-deleteEncKey ::
-  (MonadHandler m, PersistRecordBackend EncKey MongoContext, PersistQueryRead MongoContext) =>
-  Inode ->
-  ReaderT MongoContext m ()
-deleteEncKey inode = do
-  delete (EncKeyKey $ fileSystemId inode)
+storeEncKey inode Nothing = return ()

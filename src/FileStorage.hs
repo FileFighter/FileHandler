@@ -1,3 +1,7 @@
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
+
 -- |
 module FileStorage where
 
@@ -13,12 +17,21 @@ storeFile :: MonadResource m => Inode -> IO (ConduitT ByteString o m ())
 storeFile inode = do
   let id = fileSystemId inode
   createDirectoryIfMissing True $ take 1 id
-  return $sinkFileCautious (getPathFromFileId id)
+  return $ sinkFileCautious (getPathFromFileId id)
 
 retrieveFile :: MonadResource m => Inode -> ConduitT i ByteString m ()
 retrieveFile inode = do
   let id = fileSystemId inode
   sourceFile (getPathFromFileId id)
+
+deleteFile :: (MonadLogger m, MonadIO m) => Inode -> m ()
+deleteFile inode = do
+  let id = fileSystemId inode
+  let path = getPathFromFileId id
+  liftIO (doesFileExist path)
+    >>= \case
+      False -> $(logError) $ "Could not delete file with path " <> pack path <> " because it does not exist."
+      True -> liftIO $ removeFile $ getPathFromFileId id
 
 getPathFromFileId :: String -> String
 getPathFromFileId id = take 1 id ++ ("/" ++ id)
