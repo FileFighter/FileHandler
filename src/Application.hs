@@ -33,7 +33,8 @@ import ClassyPrelude
   )
 import ClassyPrelude.Yesod (Default (def), PersistConfig (createPoolConfig))
 import Crypto.KeyEncrptionKey (createKeyEncrptionKey, getOrCreateKekIV)
-import Data.ByteString.Char8 (pack)
+import Data.ByteString (pack)
+import Data.ByteString.UTF8 (fromString)
 import Data.Yaml.Config (loadYamlSettingsArgs, useEnv)
 import FileSystemServiceClient.FileSystemServiceClient (makeFileSystemServiceClient)
 import Foundation
@@ -152,7 +153,7 @@ corsPolicy :: String -> Maybe CorsResourcePolicy
 corsPolicy frontendOrigin =
   Just
     CorsResourcePolicy
-      { corsOrigins = Just ([pack frontendOrigin], True),
+      { corsOrigins = Just ([fromString frontendOrigin], True),
         corsMethods = ["GET", "POST", "DELETE"],
         corsRequestHeaders = ["Authorization", "content-type", "X-FF-IDS", "X-FF-ID", "X-FF-NAME", "X-FF-PATH", "X-FF-SIZE", "X-FF-PARENT-PATH", "X-FF-RELATIVE-PATH", "X-FF-PARENT-PATH"],
         corsExposedHeaders = Just ["Content-Disposition"],

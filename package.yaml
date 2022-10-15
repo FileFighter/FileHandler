@@ -36,6 +36,7 @@ dependencies:
   - mongoDB
   - template-haskell
   - fast-logger
+  - utf8-string
 
 # The library contains all of our application code. The executable
 # defined below is just a thin wrapper.
