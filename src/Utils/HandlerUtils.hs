@@ -18,6 +18,7 @@ import ClassyPrelude
     Text,
     Utf8 (decodeUtf8),
     elem,
+    fromMaybe,
     maybe,
     otherwise,
     pack,
@@ -36,6 +37,7 @@ import Foundation
 import Models.RestApiStatus
 import Network.HTTP.Types
 import Network.Wai (rawPathInfo)
+import Utils.MaybeUtils (firstJustsM)
 import Yesod
   ( ContentType,
     MonadHandler (HandlerSite),
@@ -43,6 +45,7 @@ import Yesod
     YesodRequest (reqAccept, reqWaiRequest),
     getRequest,
     logError,
+    lookupBearerAuth,
     lookupCookie,
     lookupGetParam,
     notAuthenticated,
@@ -85,9 +88,8 @@ sendErrorOrRedirect status body =
 
 lookupAuth :: MonadHandler m => m Text
 lookupAuth = do
-  authToken <- lookupCookie "token"
-  authTokenParam <- lookupGetParam "token"
-  maybe (maybe notAuthenticated return authTokenParam) return authToken
+  maybeToken <- firstJustsM [lookupCookie "token", lookupBearerAuth, lookupGetParam "token"]
+  maybe notAuthenticated return maybeToken
 
 lookupContentType :: MonadHandler m => ContentType -> m Bool
 lookupContentType contentType =

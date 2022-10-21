@@ -36,6 +36,14 @@ instance FromJSON Inode where
           omitNothingFields = True
         }
 
+instance ToJSON Inode where
+  toJSON =
+    genericToJSON
+      defaultOptions
+        { fieldLabelModifier = typeFieldRename,
+          omitNothingFields = True
+        }
+
 getFirstPathPiece :: Inode -> String
 getFirstPathPiece inode = do
   let inodePath = path inode
