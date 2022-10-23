@@ -21,7 +21,7 @@ data Inode = Inode
     lastUpdated :: Int,
     lastUpdatedBy :: User
   }
-  deriving (Show, Generic)
+  deriving (Show, Generic, Eq)
 
 typeFieldRename :: String -> String
 typeFieldRename "fileSystemId" = "id"

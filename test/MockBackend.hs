@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-
 {-# HLINT ignore "Redundant bracket" #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 module MockBackend where
 
@@ -9,6 +9,7 @@ import ClassyPrelude
 import ClassyPrelude.Yesod (Application, Value, object, (.=))
 import Control.Concurrent (ThreadId, forkIO)
 import Data.Aeson (encode)
+import GHC.Conc (killThread)
 import Network.HTTP.Types.Status
 import Network.Wai (Request (pathInfo), responseLBS)
 import Network.Wai.Handler.Warp (run)
@@ -16,6 +17,13 @@ import Network.Wai.Handler.Warp (run)
 type MockResponses = [MockResponse]
 
 data MockResponse = MockResponse {pathToRequest :: Text, returnValue :: Value, status :: Status}
+
+withStubbedApi :: MockResponses -> IO () -> IO ()
+withStubbedApi mockResponses action =
+  bracket
+    (withMockBackend mockResponses)
+    killThread
+    (const action)
 
 withMockBackend :: MockResponses -> IO ThreadId
 withMockBackend mockResponses = forkIO $ run 8080 $ makeApp mockResponses

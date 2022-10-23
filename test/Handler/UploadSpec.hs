@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 
 module Handler.UploadSpec (spec) where
@@ -6,9 +7,9 @@ module Handler.UploadSpec (spec) where
 import ClassyPrelude.Yesod (hAuthorization, status200)
 import Control.Concurrent (killThread)
 import Data.Aeson
-import MockBackend (MockResponse (..), withMockBackend)
+import MockBackend (MockResponse (..), MockResponses, withMockBackend, withStubbedApi)
 import Models.Inode (Inode (..))
-import Models.User (User (User, privileges))
+import Models.User (User (User))
 import TestImport
 
 apiPrefix :: Text
@@ -35,16 +36,9 @@ mockInode =
 uploadMockResponse :: MockResponse
 uploadMockResponse = MockResponse {pathToRequest = apiPrefix <> "/filesystem/upload", returnValue = toJSON [mockInode], status = status200}
 
-withStubbedApi :: IO () -> IO ()
-withStubbedApi action =
-  bracket
-    (withMockBackend [preflightMockResponse, uploadMockResponse])
-    killThread
-    (const action)
-
 spec :: Spec
 spec = withApp $
-  around_ withStubbedApi $ do
+  around_ (withStubbedApi [preflightMockResponse, uploadMockResponse]) $ do
     describe "Upload endpoint something" $ do
       it "Accepts file upload" $ do
         request $ do
@@ -58,3 +52,5 @@ spec = withApp $
         safedFile <- liftIO $ readFile "./a/abcd"
         let expected = "Hallo\n"
         assertEq "Filecontent is correct" safedFile expected
+        (uploadResponse :: [Inode]) <- requireJSONResponse
+        assertEq "Response is correct" uploadResponse [mockInode]

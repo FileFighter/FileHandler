@@ -3,6 +3,7 @@
 module Models.User where
 
 import ClassyPrelude
+import ClassyPrelude (Eq)
 import Data.Aeson
 
 data User = User
@@ -10,7 +11,7 @@ data User = User
     username :: String,
     privileges :: String
   }
-  deriving (Show, Generic)
+  deriving (Show, Generic, Eq)
 
 userIdFieldRename :: String -> String
 userIdFieldRename "userId" = "id"
