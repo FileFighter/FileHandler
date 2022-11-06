@@ -1,22 +1,44 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE NoImplicitPrelude   #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE NoImplicitPrelude #-}
 
 module Handler.UploadSpec (spec) where
 
-import ClassyPrelude.Yesod (hAuthorization, status200)
-import Control.Concurrent (killThread)
-import Data.Aeson
-import MockBackend (MockResponse (..), MockResponses, withMockBackend, withStubbedApi)
-import Models.Inode (Inode (..))
-import Models.User (User (User))
-import TestImport
+import           ClassyPrelude.Yesod                             (hAuthorization,
+                                                                  status200)
+import           Control.Concurrent                              (killThread)
+import           Data.Aeson
+import           FileSystemServiceClient.FileSystemServiceClient (PreflightInode (..),
+                                                                  UploadedInode (UploadedInode),
+                                                                  relativePath)
+import           MockBackend                                     (MockResponse (..),
+                                                                  MockResponses,
+                                                                  withMockBackend,
+                                                                  withStubbedApi)
+import           Models.Inode                                    (Inode (..))
+import           Models.Path                                     (Path (Path))
+import           Models.User                                     (User (User))
+import           TestImport
 
 apiPrefix :: Text
 apiPrefix = "api/api"
 
+preflightExpectedBody :: Value
+preflightExpectedBody =
+  toJSON $
+    PreflightInode
+      { parentPath = Path "/someFolder",
+        relativePaths = [Path "somefile.txt"]
+      }
+
 preflightMockResponse :: MockResponse
-preflightMockResponse = MockResponse {pathToRequest = apiPrefix <> "/filesystem/preflight", returnValue = "", status = status200}
+preflightMockResponse =
+  MockResponse
+    { pathToRequest = apiPrefix <> "/filesystem/preflight",
+      expectedBody = preflightExpectedBody,
+      returnValue = "",
+      status = status200
+    }
 
 mockUser :: User
 mockUser = User 1 "username" "privileges"
@@ -33,8 +55,23 @@ mockInode =
       lastUpdatedBy = mockUser
     }
 
+uploadExpectedBody :: Value
+uploadExpectedBody =
+  toJSON $
+    UploadedInode
+      (Path "/someFolder")
+      (Path "somefile.txt")
+      6
+      "text/plain"
+
 uploadMockResponse :: MockResponse
-uploadMockResponse = MockResponse {pathToRequest = apiPrefix <> "/filesystem/upload", returnValue = toJSON [mockInode], status = status200}
+uploadMockResponse =
+  MockResponse
+    { pathToRequest = apiPrefix <> "/filesystem/upload",
+      expectedBody = uploadExpectedBody,
+      returnValue = toJSON [mockInode],
+      status = status200
+    }
 
 spec :: Spec
 spec = withApp $
