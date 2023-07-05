@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:22.10
 
 ARG BINLOCATION
 ENV RESTURL=FileFighterREST
